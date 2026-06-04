@@ -64,13 +64,33 @@ folderRouter.post('/', async (req: AuthRequest, res, next) => {
 folderRouter.patch('/:id', async (req: AuthRequest, res, next) => {
   try {
     const body = createSchema.partial().parse(req.body)
+    const folderId = String(req.params.id)
+    if (body.parentId === folderId) return res.status(400).json({ code: 'FOLDER_INVALID_PARENT', message: 'Folder cannot be moved into itself.' })
+
+    if (body.parentId) {
+      await prisma.folder.findFirstOrThrow({ where: { id: body.parentId, userId: req.user!.id, deletedAt: null } })
+      const folders = await prisma.folder.findMany({ where: { userId: req.user!.id, deletedAt: null }, select: { id: true, parentId: true } })
+      const descendantIds = new Set<string>([folderId])
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const folder of folders) {
+          if (folder.parentId && descendantIds.has(folder.parentId) && !descendantIds.has(folder.id)) {
+            descendantIds.add(folder.id)
+            changed = true
+          }
+        }
+      }
+      if (descendantIds.has(body.parentId)) return res.status(400).json({ code: 'FOLDER_INVALID_PARENT', message: 'Folder cannot be moved into itself or a child folder.' })
+    }
+
     const folder = await prisma.folder.updateMany({
-      where: { id: String(req.params.id), userId: req.user!.id, deletedAt: null },
-      data: { ...(body.name ? { name: body.name } : {}), ...(body.color ? { color: body.color } : {}) },
+      where: { id: folderId, userId: req.user!.id, deletedAt: null },
+      data: { ...(body.name ? { name: body.name } : {}), ...(body.color ? { color: body.color } : {}), ...(body.parentId !== undefined ? { parentId: body.parentId } : {}) },
     })
     if (folder.count === 0) return res.status(404).json({ code: 'FOLDER_NOT_FOUND', message: 'Folder not found.' })
     const updated = await prisma.folder.findFirstOrThrow({
-      where: { id: String(req.params.id), userId: req.user!.id },
+      where: { id: folderId, userId: req.user!.id },
       select: { id: true, name: true, color: true, parentId: true, createdAt: true, updatedAt: true },
     })
     return res.json({ folder: serializeFolder(updated) })

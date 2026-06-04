@@ -36,6 +36,48 @@ fileRouter.get('/', async (req: AuthRequest, res, next) => {
   }
 })
 
+const batchFileSchema = z.object({ fileIds: z.array(z.string().min(1)).min(1).max(100) })
+
+fileRouter.patch('/batch', async (req: AuthRequest, res, next) => {
+  try {
+    const body = batchFileSchema.extend({ folderId: z.string().nullable().optional() }).parse(req.body)
+    if (body.folderId) await prisma.folder.findFirstOrThrow({ where: { id: body.folderId, userId: req.user!.id, deletedAt: null } })
+    const result = await prisma.file.updateMany({ where: { id: { in: body.fileIds }, userId: req.user!.id, status: 'active' }, data: { folderId: body.folderId ?? null } })
+    return res.json({ status: 'ok', moved: result.count })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+fileRouter.delete('/batch', async (req: AuthRequest, res, next) => {
+  try {
+    const body = batchFileSchema.parse(req.body)
+    const files = await prisma.file.findMany({ where: { id: { in: body.fileIds }, userId: req.user!.id, status: 'active' }, include: { connectedAccount: true } })
+    const deletedIds: string[] = []
+    const syncedAccountIds = new Set<string>()
+    const failed: Array<{ fileId: string; message: string }> = []
+
+    for (const file of files) {
+      try {
+        const auth = await getAuthedGoogleClient(file.connectedAccount)
+        const drive = google.drive({ version: 'v3', auth })
+        await drive.files.delete({ fileId: file.providerFileId })
+        deletedIds.push(file.id)
+        syncedAccountIds.add(file.connectedAccountId)
+      } catch (error) {
+        failed.push({ fileId: file.id, message: error instanceof Error ? error.message : 'Delete failed' })
+      }
+    }
+
+    if (deletedIds.length > 0) await prisma.file.updateMany({ where: { id: { in: deletedIds }, userId: req.user!.id }, data: { status: 'deleted', deletedAt: new Date() } })
+    for (const accountId of syncedAccountIds) await syncGoogleQuota(accountId).catch(() => undefined)
+    if (deletedIds.length === 0 && failed.length > 0) return res.status(400).json({ code: 'FILES_DELETE_FAILED', message: 'No files were deleted.', deleted: 0, failed })
+    return res.json({ status: 'ok', deleted: deletedIds.length, failed })
+  } catch (error) {
+    return next(error)
+  }
+})
+
 fileRouter.get('/:id', async (req: AuthRequest, res, next) => {
   try {
     const fileId = String(req.params.id)
