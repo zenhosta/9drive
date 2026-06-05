@@ -506,10 +506,10 @@ export function AllFilesPage() {
           <div className="flex justify-end gap-3 pt-2"><Button type="button" variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button><Button disabled={inviting}>{inviting ? 'Sending...' : 'Send Invite'}</Button></div>
         </form>
       </DummyModal>
-      <DummyModal open={previewOpen} title="File Preview" description={activeFile?.name ?? ''} onClose={closePreview} className="max-w-5xl">
+      <DummyModal open={previewOpen} title="File Preview" description={activeFile?.name ?? ''} onClose={closePreview} className="max-w-5xl overflow-hidden">
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
           {activePreviewKind === 'image' ? <img src={previewUrl} alt={activeFile?.name ?? 'File preview'} className="max-h-[70vh] w-full object-contain" /> : null}
-          {activePreviewKind === 'video' ? <video ref={previewVideoRef} controls playsInline preload="metadata" className="max-h-[70vh] w-full"><source src={previewUrl} type={activeFile?.mimeType} /></video> : null}
+          {activePreviewKind === 'video' ? <div className="drive-preview-video-shell"><video ref={previewVideoRef} controls playsInline preload="metadata"><source src={previewUrl} type={activeFile?.mimeType} /></video></div> : null}
           {activePreviewKind === 'document' ? <iframe src={previewUrl} title={activeFile?.name ?? 'File preview'} className="h-[70vh] w-full" /> : null}
           {!activePreviewKind ? <div className="p-6 text-center text-sm text-slate-500">Preview not available for this file type. Use Download instead.</div> : null}
         </div>
