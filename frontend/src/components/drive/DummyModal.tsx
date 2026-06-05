@@ -7,11 +7,11 @@ export function DummyModal({ open, title, description, children, onClose, classN
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button className="absolute inset-0 bg-slate-950/45" aria-label="Close modal" onClick={onClose} />
-      <div className={cn('relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-950/20', className)}>
+      <div className={cn('relative max-h-[calc(100dvh-2rem)] w-full overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-950/20 sm:max-w-md sm:rounded-2xl', className)}>
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-xl font-extrabold tracking-tight">{title}</h2>
             <p className="mt-1 text-sm text-slate-500">{description}</p>
           </div>

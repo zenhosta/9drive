@@ -27,7 +27,7 @@ const menu = [
   { label: 'All Files', icon: FileArchive, href: '/all-files' },
   { label: 'Quota Tracker', icon: Gauge, href: '/quota' },
   { label: 'Shared With Me', icon: Share2, href: '/shared' },
-  { label: 'Starred', icon: Star, href: '/starred' },
+  { label: 'Starred', icon: Star, href: '/starred', disabled: true },
 ]
 
 type StorageSummary = {
@@ -75,7 +75,12 @@ function Sidebar({ onNavigate, user, storage, breakdown, onLogout }: { onNavigat
       </div>
 
       <nav className="mt-6 grid gap-2">
-        {menu.map((item) => (
+        {menu.map((item) => item.disabled ? (
+          <button key={item.label} type="button" disabled className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-xl px-4 text-sm font-semibold text-slate-400 opacity-70">
+            <item.icon className="h-5 w-5" />
+            {item.label}
+          </button>
+        ) : (
           <NavLink key={item.label} to={item.href} onClick={onNavigate} className={({ isActive }) => cn('inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all', isActive ? 'bg-slate-100 text-slate-950 shadow-sm' : 'text-slate-700 hover:bg-slate-100')}>
             <item.icon className="h-5 w-5" />
             {item.label}

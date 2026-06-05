@@ -6,7 +6,37 @@ import type { FileItem } from '@/data/drive-data'
 
 export function FileTable({ files, mode = 'default', selectedFileIds = new Set<string>(), allSelected = false, onFileContextMenu, onToggleFile, onToggleAll }: { files: FileItem[]; mode?: 'default' | 'shared' | 'recent' | 'starred' | 'archived'; selectedFileIds?: Set<string>; allSelected?: boolean; onFileContextMenu?: (event: MouseEvent<HTMLElement>, file: FileItem) => void; onToggleFile?: (file: FileItem) => void; onToggleAll?: () => void }) {
   return (
-    <div className="mt-5 overflow-x-auto">
+    <div className="mt-5">
+      <div className="grid gap-3 sm:hidden">
+        {onToggleAll ? (
+          <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold shadow-sm">
+            <span>Select all files</span>
+            <input type="checkbox" className="h-5 w-5 accent-blue-600" checked={allSelected} onChange={onToggleAll} />
+          </label>
+        ) : null}
+        {files.map((file) => {
+          const selected = selectedFileIds.has(file.id ?? '')
+          const meta = mode === 'archived' ? file.location : mode === 'recent' ? file.openedDate : mode === 'starred' ? file.starredDate : file.date
+          return (
+            <article key={file.id ?? file.name} onClick={() => onToggleFile?.(file)} onContextMenu={(event) => onFileContextMenu?.(event, file)} className={selected ? 'rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm' : 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm'}>
+              <div className="flex items-start gap-3">
+                {onToggleFile ? <input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-blue-600" checked={selected} onChange={() => onToggleFile?.(file)} onClick={(event) => event.stopPropagation()} /> : null}
+                <div className="mt-0.5 shrink-0">{mode === 'starred' ? <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" /> : <FileIcon kind={file.kind} />}</div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-sm font-extrabold text-slate-950">{file.name}</h3>
+                  <p className="mt-1 truncate text-xs text-slate-500">{meta}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1">{file.size}</span>
+                    <span className="max-w-full truncate rounded-full bg-slate-100 px-2.5 py-1">{mode === 'shared' ? file.owner : file.access}</span>
+                  </div>
+                </div>
+                <button className="-mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100" onClick={(event) => { event.stopPropagation(); onFileContextMenu?.(event, file) }} aria-label={`Open ${file.name} menu`}><MoreVertical className="h-5 w-5" /></button>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+      <div className="hidden overflow-x-auto sm:block">
       <table className="w-full min-w-[760px] border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-slate-200 text-slate-950">
@@ -44,6 +74,7 @@ export function FileTable({ files, mode = 'default', selectedFileIds = new Set<s
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
