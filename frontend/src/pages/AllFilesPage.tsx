@@ -41,6 +41,14 @@ function mimeToKind(mimeType: string): FileItem['kind'] {
   return 'doc'
 }
 
+function previewKind(mimeType: string | undefined) {
+  if (!mimeType) return null
+  if (mimeType.startsWith('image/') || mimeType === 'application/vnd.google-apps.drawing') return 'image'
+  if (mimeType.startsWith('video/')) return 'video'
+  if (mimeType === 'application/pdf' || mimeType === 'application/vnd.google-apps.document' || mimeType === 'application/vnd.google-apps.presentation') return 'document'
+  return null
+}
+
 function mapFile(file: BackendFile): FileItem {
   return { id: file.id, name: file.name, mimeType: file.mimeType, sizeBytes: file.sizeBytes, createdAt: file.createdAt, accountEmail: file.connectedAccount?.email, accountProvider: file.connectedAccount?.provider, date: formatDate(file.createdAt), size: formatBytes(file.sizeBytes), access: file.connectedAccount?.email ?? 'Google Drive', kind: mimeToKind(file.mimeType), shared: 1, folderId: file.folderId, folderName: file.folder?.name }
 }
@@ -302,9 +310,9 @@ export function AllFilesPage() {
 
   async function viewFile() {
     if (!activeFile?.id) return
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    const data = await apiFetch<{ url: string }>(`/files/${activeFile.id}/preview-token`, { method: 'POST' })
-    setPreviewUrl(data.url)
+    const data = await apiFetch<{ url: string }>(`/files/${activeFile.id}/share`, { method: 'POST' })
+    const previewPath = new URL(data.url).pathname.replace(/\/embed$/, '')
+    setPreviewUrl(`${API_URL}${previewPath}/preview`)
     setPreviewOpen(true)
     setContextMenu({ x: 0, y: 0, file: null })
   }
@@ -443,10 +451,11 @@ export function AllFilesPage() {
   const activeFolder = allFolders.find((folder) => folder.id === activeFolderId)
   const allVisibleSelected = files.length > 0 && files.every((file) => file.id && selectedFileIds.has(file.id))
   const uploadPanelTitle = uploadProgress.status === 'done' ? 'Upload complete' : uploadProgress.status === 'partial' ? 'Upload completed with errors' : uploadProgress.status === 'error' ? 'Upload failed' : uploadProgress.percent >= 99 ? 'Processing on server' : 'Uploading files'
+  const activePreviewKind = previewKind(activeFile?.mimeType)
 
   return (
     <>
-      <div onContextMenu={openEmptyContextMenu} className="min-h-[620px]">
+      <div onContextMenu={openEmptyContextMenu} className="min-h-[620px] w-full min-w-0">
       <PageHeader title={activeFolder ? <span className="block min-w-0 truncate"><button className="text-blue-600 hover:underline" onClick={closeFolder}>All Files</button><span className="text-slate-400"> / </span><span>{activeFolder.name}</span></span> : 'All Files'} actions={<><Button className="w-full" onClick={() => setUploadOpen(true)}><Upload className="h-4 w-4" />Upload</Button><Button className="w-full" variant="outline" onClick={() => setFolderOpen(true)}><FolderPlus className="h-4 w-4" />New Folder</Button></>} />
       {message ? <p className="mt-5 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
       {!activeFolder && (recentFolders.length > 0 ? <FolderGrid items={recentFolders} mobileTwoColumns onFolderMenu={openFolderMenu} onFolderOpen={openFolder} /> : <p className="mt-8 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No folders yet. Click New Folder to organize uploads.</p>)}
@@ -499,10 +508,10 @@ export function AllFilesPage() {
       </DummyModal>
       <DummyModal open={previewOpen} title="File Preview" description={activeFile?.name ?? ''} onClose={closePreview} className="max-w-5xl">
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-          {activeFile?.mimeType?.startsWith('image/') ? <img src={previewUrl} alt={activeFile.name} className="max-h-[70vh] w-full object-contain" /> : null}
-          {activeFile?.mimeType?.startsWith('video/') ? <video ref={previewVideoRef} controls playsInline preload="metadata" className="max-h-[70vh] w-full"><source src={previewUrl} type={activeFile.mimeType} /></video> : null}
-          {activeFile?.mimeType === 'application/pdf' ? <iframe src={previewUrl} title={activeFile.name} className="h-[70vh] w-full" /> : null}
-          {!activeFile?.mimeType?.startsWith('image/') && !activeFile?.mimeType?.startsWith('video/') && activeFile?.mimeType !== 'application/pdf' ? <div className="p-6 text-center text-sm text-slate-500">Preview not available for this file type. Use Download instead.</div> : null}
+          {activePreviewKind === 'image' ? <img src={previewUrl} alt={activeFile?.name ?? 'File preview'} className="max-h-[70vh] w-full object-contain" /> : null}
+          {activePreviewKind === 'video' ? <video ref={previewVideoRef} controls playsInline preload="metadata" className="max-h-[70vh] w-full"><source src={previewUrl} type={activeFile?.mimeType} /></video> : null}
+          {activePreviewKind === 'document' ? <iframe src={previewUrl} title={activeFile?.name ?? 'File preview'} className="h-[70vh] w-full" /> : null}
+          {!activePreviewKind ? <div className="p-6 text-center text-sm text-slate-500">Preview not available for this file type. Use Download instead.</div> : null}
         </div>
       </DummyModal>
        {uploadProgress.open ? (

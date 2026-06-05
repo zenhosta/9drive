@@ -153,8 +153,8 @@ export function DriveLayout() {
   }
 
   return (
-    <main className="min-h-screen bg-white">
-      <div className="flex min-h-screen flex-col bg-white lg:h-screen lg:overflow-hidden lg:flex-row">
+    <main className="min-h-screen w-full overflow-x-hidden bg-white">
+      <div className="flex min-h-screen w-full flex-col bg-white lg:h-screen lg:overflow-hidden lg:flex-row">
         <div className="hidden lg:block lg:h-screen lg:shrink-0">
           <Sidebar user={user} storage={storage} breakdown={breakdown} onLogout={logout} />
         </div>
@@ -167,23 +167,26 @@ export function DriveLayout() {
           </div>
           <Sidebar user={user} storage={storage} breakdown={breakdown} onLogout={logout} onNavigate={() => setSidebarOpen(false)} />
         </div>
-        <section className="flex-1 p-5 sm:p-8 lg:h-screen lg:overflow-y-auto lg:p-10">
-          <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex items-center gap-3 lg:hidden">
-              <Button variant="outline" size="icon" aria-label="Open sidebar" onClick={() => setSidebarOpen(true)}>
-                <Menu className="h-5 w-5" />
-              </Button>
-              <div className="flex items-center gap-2">
-                <BrandLogo className="h-9 w-9" />
-                <span className="text-xl font-extrabold tracking-tight">9Drive</span>
+        <section className="min-w-0 flex-1 p-4 sm:p-8 lg:h-screen lg:overflow-y-auto lg:p-10">
+          <header className="flex w-full min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center justify-between gap-3 lg:hidden">
+              <div className="flex min-w-0 items-center gap-3">
+                <Button variant="outline" size="icon" aria-label="Open sidebar" onClick={() => setSidebarOpen(true)}>
+                  <Menu className="h-5 w-5" />
+                </Button>
+                <div className="flex min-w-0 items-center gap-2">
+                  <BrandLogo className="h-9 w-9 shrink-0" />
+                  <span className="truncate text-xl font-extrabold tracking-tight">9Drive</span>
+                </div>
               </div>
+              <Button variant="outline" size="icon" aria-label="Notifications"><Bell className="h-5 w-5" /></Button>
             </div>
-            <div className="relative max-w-xl flex-1">
+            <div className="relative w-full min-w-0 flex-1 xl:max-w-xl">
               <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
               <Input placeholder="Search Folder, Document, Etc" className="pl-11 pr-12" />
               <SlidersHorizontal className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="hidden flex-wrap gap-3 lg:flex">
               <Button variant="outline" size="icon" aria-label="Notifications"><Bell className="h-5 w-5" /></Button>
             </div>
           </header>
