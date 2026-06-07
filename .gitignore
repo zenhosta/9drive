@@ -1,13 +1,21 @@
-node_modules/
-dist/
-*.log
+# Python
+backend-python/venv/
+backend-python/xina/
+backend-python/__pycache__/
+backend-python/**/__pycache__/
+backend-python/*.pyc
+backend-python/.env
+
+# Node / Expo
+frontend-mobile/node_modules/
+frontend-mobile/.expo/
+frontend-mobile/dist/
+frontend-mobile/build/
+
+# OS
 .DS_Store
+Thumbs.db
 
-# Secrets
-backend/.env
-backend/.env.local
-backend/.env.*.local
-
-# Local env is non-secret by default, keep example in repo instead.
-frontend/.env.local
-frontend/.env.*.local
+# Docker
+backend-python/mysql_data/
+frontend-mobile/.env

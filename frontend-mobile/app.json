@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "9Drive",
+    "slug": "9drive-xinac",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "9drive",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.xinac.9drive"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}
