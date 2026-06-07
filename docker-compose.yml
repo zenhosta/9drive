@@ -1,53 +1,28 @@
 services:
   mysql:
-    image: mysql:8.4
-    restart: unless-stopped
+    image: mysql:8
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-9drive}
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: 9drive
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
-      interval: 10s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
       timeout: 5s
       retries: 10
 
   backend:
-    build:
-      context: ./backend
-    restart: unless-stopped
+    build: ./backend-python
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./backend-python/.env
     depends_on:
       mysql:
         condition: service_healthy
-    environment:
-      DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:-root}@mysql:3306/${MYSQL_DATABASE:-9drive}
-      APP_PORT: 4000
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-this-jwt-secret-at-least-32-chars}
-      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-change-this-encryption-key-32bytes!}
-      ACCESS_TOKEN_TTL_SECONDS: 900
-      REFRESH_TOKEN_TTL_DAYS: 30
-      MAX_UPLOAD_BYTES: 5368709120
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:4000/connected-accounts/google/callback}
-    ports:
-      - "4000:4000"
-
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:4000}
-        VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY:-}
-    restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "5173:80"
 
 volumes:
   mysql_data:
