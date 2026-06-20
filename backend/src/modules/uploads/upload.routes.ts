@@ -153,10 +153,15 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
 
         const session = await prisma.uploadSession.create({ data: { userId: req.user!.id, targetConnectedAccountId: account.id, fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' } })
         logUpload('file upload started', { sessionId: session.id, accountId: account.id, fileName, sizeBytes: meta.sizeBytes.toString() })
+        const { Transform } = await import('node:stream')
         let streamedBytes = 0n
-        fileStream.on('data', (chunk: Buffer) => {
-          streamedBytes += BigInt(chunk.length)
+        const uploadStream = new Transform({
+          transform(chunk: Buffer, encoding, callback) {
+            streamedBytes += BigInt(chunk.length)
+            callback(null, chunk)
+          }
         })
+        fileStream.pipe(uploadStream)
 
         let providerFileId = ''
         let s3FileId: string | null = null
@@ -169,7 +174,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           })
           s3FileId = provisionalFile.id
           providerFileId = buildS3ObjectKey(config, req.user!.id, provisionalFile.id, fileName)
-          await uploadS3Object(config, providerFileId, fileStream, meta.mimeType)
+          await uploadS3Object(config, providerFileId, uploadStream, meta.mimeType)
           await prisma.file.update({ where: { id: provisionalFile.id }, data: { providerFileId, status: 'active' } })
           completed.push({ ...provisionalFile, providerFileId, status: 'active', sizeBytes: provisionalFile.sizeBytes.toString() })
           logUpload('s3 upload completed', { sessionId: session.id, accountId: account.id, fileName })
@@ -179,7 +184,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           const appFolderId = await ensureGoogleAppFolder(account)
           const uploaded = await drive.files.create({
             requestBody: { name: fileName, parents: [appFolderId] },
-            media: { mimeType: meta.mimeType, body: fileStream },
+            media: { mimeType: meta.mimeType, body: uploadStream },
             fields: 'id,name,mimeType,size',
           })
           providerFileId = uploaded.data.id ?? ''
@@ -204,6 +209,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         if (account.provider === 's3') syncS3Quota(account.id).catch(() => undefined)
         else syncQuotaInBackground(account.id, session.id)
       } catch (error) {
+        fileStream.unpipe()
         fileStream.resume()
         logUpload('file upload failed', { fileName, message: error instanceof Error ? error.message : 'Upload failed' })
         failed.push({ fileName, code: 'UPLOAD_FAILED', message: error instanceof Error ? error.message : 'Upload failed' })
