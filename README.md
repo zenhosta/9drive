@@ -71,11 +71,19 @@ password: empty
 The easiest way to set up and run the project is using the automated setup script. It automatically generates all environment files with secure keys, installs dependencies, handles Prisma migrations, and configures either **SQLite** (zero installation/config) or **MySQL**.
 
 ### Windows (PowerShell)
-Open PowerShell in the project root directory and run:
+Make sure to open PowerShell and navigate to the project directory first. For example, if you cloned the project to `E:\AUTO KLIK\9Drive`:
 
 ```powershell
+# 1. Switch to the drive where the project is located (if necessary)
+E:
+
+# 2. Navigate to the project folder
+cd "E:\AUTO KLIK\9Drive"
+
+# 3. Run the automated setup script
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
+
 
 1. **Database**: Choose **SQLite (Option 1)** for zero-configuration, or **MySQL (Option 2)**.
 2. **Google Credentials**: Enter Client ID/Secret or skip (press Enter) to set up later.
