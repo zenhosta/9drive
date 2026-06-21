@@ -158,7 +158,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         const folderId = meta.folderId || null
         if (folderId) await prisma.folder.findFirstOrThrow({ where: { id: folderId, userId: req.user!.id, deletedAt: null } })
 
-        const session = await prisma.uploadSession.create({ data: { userId: req.user!.id, targetConnectedAccountId: account.id, fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' } })
+        const session = await prisma.uploadSession.create({ data: { userId: req.user!.id, targetConnectedAccountId: account.id, folderId, fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' } })
         logUpload('file upload started', { sessionId: session.id, accountId: account.id, fileName, sizeBytes: meta.sizeBytes.toString() })
         let streamedBytes = 0n
         fileStream.on('data', (chunk: Buffer) => {
@@ -286,6 +286,7 @@ uploadRouter.post('/resumable/init', requireAuth, async (req: AuthRequest, res, 
         data: {
           userId: req.user!.id,
           targetConnectedAccountId: account.id,
+          folderId,
           fileName: body.fileName,
           mimeType: body.mimeType,
           sizeBytes,
@@ -327,6 +328,7 @@ uploadRouter.post('/resumable/init', requireAuth, async (req: AuthRequest, res, 
       data: {
         userId: req.user!.id,
         targetConnectedAccountId: account.id,
+        folderId,
         fileName: body.fileName,
         mimeType: body.mimeType,
         sizeBytes,
