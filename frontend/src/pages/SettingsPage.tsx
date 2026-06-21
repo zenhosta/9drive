@@ -145,7 +145,7 @@ export function SettingsPage() {
     <>
       <PageHeader title="Setting" description="Manage account and connected storage." actions={<><Button variant="outline" className="col-span-2 w-full sm:col-span-1" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button><Button className="col-span-2 w-full sm:col-span-1" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Connecting...' : 'Connect Drive'}</Button></>} />
       {message ? <p className="mt-5 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
-      <div className="mt-8 grid gap-6 xl:grid-cols-[1fr_360px]">
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="grid gap-6">
           <Card className="p-4 sm:p-5">
             <div className="flex items-center gap-4 sm:gap-5">
@@ -194,7 +194,7 @@ export function SettingsPage() {
             </div>
           </Card>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1 xl:gap-6">
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 lg:gap-5">
           <Card className="p-4 sm:p-5"><HardDrive className="h-6 w-6 text-blue-600" /><h2 className="mt-3 font-extrabold sm:mt-4">Storage</h2><p className="mt-1 text-sm text-slate-500">Connected accounts: {accounts.length}</p></Card>
           <Card className="p-4 sm:p-5"><Bell className="h-6 w-6 text-blue-600" /><h2 className="mt-3 font-extrabold sm:mt-4">Notifications</h2><p className="mt-1 text-sm text-slate-500">Email and app alerts are active.</p></Card>
           <Card className="p-4 sm:p-5"><Globe className="h-6 w-6 text-blue-600" /><h2 className="mt-3 font-extrabold sm:mt-4">Region</h2><p className="mt-1 text-sm text-slate-500">Workspace region: local gateway.</p></Card>
