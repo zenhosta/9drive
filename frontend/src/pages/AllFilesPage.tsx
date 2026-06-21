@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type MouseEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Archive, CheckCircle, ChevronDown, ClipboardPaste, Download, FolderInput, FolderPlus, LayoutGrid, List, MoreVertical, RefreshCw, Star, Trash2, Upload, X } from 'lucide-react'
+import { Archive, CheckCircle, ClipboardPaste, Download, FolderInput, FolderPlus, LayoutGrid, List, MoreVertical, RefreshCw, Star, Trash2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DummyModal } from '@/components/drive/DummyModal'
@@ -19,12 +19,10 @@ import { getAccessToken } from '@/lib/auth'
 import { createPlyr, ensurePlyr } from '@/lib/plyr'
 import { getPreviewKind, officeViewerUrl } from '@/lib/preview'
 import type { FileItem, FolderItem } from '@/data/drive-data'
+import { useUpload } from '@/context/UploadContext'
 
 type BackendFile = { id: string; name: string; mimeType: string; sizeBytes: string; createdAt: string; folderId?: string | null; connectedAccount?: { email: string; provider: string }; folder?: { id: string; name: string } | null }
 type BackendFolder = { id: string; name: string; color: string; iconUrl?: string | null; parentId?: string | null; updatedAt: string }
-type UploadProgressStatus = 'uploading' | 'done' | 'error' | 'partial'
-type UploadProgressFile = { name: string; size: number; percent: number; status: UploadProgressStatus }
-type UploadProgressState = { open: boolean; fileName: string; percent: number; status: UploadProgressStatus; files: UploadProgressFile[] }
 
 type SyncGoogleResult = { accounts: number; created: number; updated: number; deleted: number }
 type FileViewMode = 'list' | 'grid'
@@ -112,7 +110,7 @@ export function AllFilesPage() {
   const [loading, setLoading] = useState(false)
   const [syncingDrive, setSyncingDrive] = useState(false)
   const [fileViewMode, setFileViewMode] = useState<FileViewMode>(getStoredFileViewMode)
-  const [uploadProgress, setUploadProgress] = useState<UploadProgressState>({ open: false, fileName: '', percent: 0, status: 'uploading', files: [] })
+  const { uploadFiles } = useUpload()
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('viewer')
@@ -231,9 +229,6 @@ export function AllFilesPage() {
     await loadFolders()
   }
 
-  // State to track resumable upload sessions to support Retry actions
-  const [resumableSessions, setResumableSessions] = useState<Record<string, { sessionId: string; file: File; folderId?: string }>>({})
-
   async function uploadFile(event: FormEvent) {
     event.preventDefault()
     if (selectedFiles.length === 0) return
@@ -243,166 +238,16 @@ export function AllFilesPage() {
     const uploadingFiles = [...selectedFiles]
     const targetFolderId = activeFolderId || selectedFolderId
 
-    // Setup initial status
-    setUploadProgress({
-      open: true,
-      fileName: uploadingFiles.length === 1 ? uploadingFiles[0].name : `${uploadingFiles.length} files`,
-      percent: 0,
-      status: 'uploading',
-      files: uploadingFiles.map(f => ({ name: f.name, size: f.size, percent: 0, status: 'uploading' }))
-    })
-
     setSelectedFiles([])
     setSelectedFolderId('')
     setUploadOpen(false)
 
-    // Upload files sequentially or concurrently
-    for (let i = 0; i < uploadingFiles.length; i++) {
-      const file = uploadingFiles[i]
-      try {
-        await uploadSingleFileResumable(file, targetFolderId, (filePercent) => {
-          setUploadProgress((current) => {
-            const nextFiles = [...current.files]
-            if (nextFiles[i]) {
-              nextFiles[i] = { ...nextFiles[i], percent: filePercent, status: filePercent >= 100 ? 'done' : 'uploading' }
-            }
-            const overallPercent = Math.round(nextFiles.reduce((sum, f) => sum + f.percent, 0) / nextFiles.length)
-            return {
-              ...current,
-              percent: overallPercent,
-              files: nextFiles
-            }
-          })
-        })
-      } catch (err) {
-        console.error('File upload failed:', file.name, err)
-        setUploadProgress((current) => {
-          const nextFiles = [...current.files]
-          if (nextFiles[i]) {
-            nextFiles[i] = { ...nextFiles[i], status: 'error' }
-          }
-          return {
-            ...current,
-            status: 'partial',
-            files: nextFiles
-          }
-        })
-      }
-    }
-
-    // Wrap up
-    await loadFiles()
-    window.dispatchEvent(new Event('9drive:storage-changed'))
-    setLoading(false)
-  }
-
-  async function uploadSingleFileResumable(file: File, folderId: string | null, onProgress: (percent: number) => void, sessionIdToRetry?: string) {
-    const CHUNK_SIZE = 5 * 1024 * 1024 // 5MB chunks (must be multiple of 256KB for Google Drive)
-    let sessionId = sessionIdToRetry || ''
-    let startOffset = 0
-
-    // 1. Initialize or get status
-    if (!sessionId) {
-      const initData = await apiFetch<{ sessionId: string; provider: string }>('/uploads/resumable/init', {
-        method: 'POST',
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          sizeBytes: String(file.size),
-          folderId: folderId || undefined
-        })
-      })
-      sessionId = initData.sessionId
-      // Save session mapping to state in case it fails and needs retry
-      setResumableSessions(prev => ({
-        ...prev,
-        [file.name]: { sessionId, file, folderId: folderId || undefined }
-      }))
-    } else {
-      const statusData = await apiFetch<{ status: string; offset: string }>(`/uploads/resumable/status/${sessionId}`)
-      startOffset = Number(statusData.offset)
-      if (statusData.status === 'completed') {
-        onProgress(100)
-        return
-      }
-    }
-
-    // 2. Upload chunk by chunk
-    while (startOffset < file.size) {
-      const endOffset = Math.min(startOffset + CHUNK_SIZE, file.size)
-      const chunk = file.slice(startOffset, endOffset)
-
-      // We use raw fetch with authorization header for binary stream upload
-      const response = await fetch(`${API_URL}/uploads/resumable/chunk/${sessionId}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${getAccessToken()}`,
-          'Content-Range': `bytes ${startOffset}-${endOffset - 1}/${file.size}`,
-          'Content-Length': String(chunk.size)
-        },
-        body: chunk
-      })
-
-      if (!response.ok) {
-        throw new Error('Chunk upload failed')
-      }
-
-      const resData = await response.json() as { status: string; offset?: string }
-      if (resData.status === 'completed') {
-        onProgress(100)
-        break
-      }
-
-      startOffset = Number(resData.offset)
-      const percent = Math.min(99, Math.round((startOffset / file.size) * 100))
-      onProgress(percent)
-    }
-  }
-
-  async function retryFailedUpload(fileName: string) {
-    const session = resumableSessions[fileName]
-    if (!session) return
-
-    setUploadProgress((current) => {
-      const nextFiles = current.files.map(f => f.name === fileName ? { ...f, status: 'uploading' as const } : f)
-      return {
-        ...current,
-        status: 'uploading',
-        files: nextFiles
-      }
-    })
-
     try {
-      const fileIndex = uploadProgress.files.findIndex(f => f.name === fileName)
-      await uploadSingleFileResumable(session.file, session.folderId || null, (filePercent) => {
-        setUploadProgress((current) => {
-          const nextFiles = [...current.files]
-          if (nextFiles[fileIndex]) {
-            nextFiles[fileIndex] = { ...nextFiles[fileIndex], percent: filePercent, status: filePercent >= 100 ? 'done' : 'uploading' }
-          }
-          const overallPercent = Math.round(nextFiles.reduce((sum, f) => sum + f.percent, 0) / nextFiles.length)
-          const allDone = nextFiles.every(f => f.status === 'done')
-          return {
-            ...current,
-            percent: overallPercent,
-            status: allDone ? 'done' : 'uploading',
-            files: nextFiles
-          }
-        })
-      }, session.sessionId)
-
-      await loadFiles()
-      window.dispatchEvent(new Event('9drive:storage-changed'))
+      await uploadFiles(uploadingFiles, targetFolderId)
     } catch (err) {
-      console.error('Retry upload failed:', fileName, err)
-      setUploadProgress((current) => {
-        const nextFiles = current.files.map(f => f.name === fileName ? { ...f, status: 'error' as const } : f)
-        return {
-          ...current,
-          status: 'partial',
-          files: nextFiles
-        }
-      })
+      console.error('Upload initiation failed:', err)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -681,6 +526,14 @@ export function AllFilesPage() {
     setPreviewOpen(false)
   }
 
+  useEffect(() => {
+    function handleUploadCompleted() {
+      loadAll().catch(() => undefined)
+    }
+    window.addEventListener('9drive:upload-completed', handleUploadCompleted)
+    return () => window.removeEventListener('9drive:upload-completed', handleUploadCompleted)
+  }, [activeFolderId])
+
   const recentFolders = folders.slice(0, 4)
   const moreFolders = folders.slice(4)
   const activeFolder = allFolders.find((folder) => folder.id === activeFolderId)
@@ -698,7 +551,6 @@ export function AllFilesPage() {
     return path
   })()
   const allVisibleSelected = files.length > 0 && files.every((file) => file.id && selectedFileIds.has(file.id))
-  const uploadPanelTitle = uploadProgress.status === 'done' ? 'Upload complete' : uploadProgress.status === 'partial' ? 'Upload completed with errors' : uploadProgress.status === 'error' ? 'Upload failed' : uploadProgress.percent >= 99 ? 'Processing on server' : 'Uploading files'
   const activePreviewKind = getPreviewKind(activeFile?.mimeType)
 
   return (
@@ -766,30 +618,6 @@ export function AllFilesPage() {
           {!previewLoading && !previewError && !activePreviewKind ? <div className="p-6 text-center text-sm text-slate-500">Preview not available for this file type. Use Download instead.</div> : null}
         </div>
       </DummyModal>
-       {uploadProgress.open ? (
-        <div className="fixed inset-x-3 bottom-3 z-[70] max-h-[70dvh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-[min(420px,calc(100vw-2.5rem))]">
-          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-            <div className="flex items-center gap-2 font-extrabold">
-              {uploadProgress.status === 'done' ? <CheckCircle className="h-5 w-5 text-emerald-500" /> : uploadProgress.status === 'partial' || uploadProgress.status === 'error' ? <X className="h-5 w-5 text-red-500" /> : <Upload className="h-5 w-5 text-blue-600" />}
-              {uploadPanelTitle}
-            </div>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8"><ChevronDown className="h-4 w-4" /></Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setUploadProgress((current) => ({ ...current, open: false }))}><X className="h-4 w-4" /></Button>
-            </div>
-          </div>
-          <div className="p-4">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <p className="truncate font-semibold">{uploadProgress.fileName}</p>
-              <span className="text-slate-500">{uploadProgress.percent}%</span>
-            </div>
-            <div className="mt-3 h-2 rounded-full bg-slate-100">
-              <div className={uploadProgress.status === 'error' || uploadProgress.status === 'partial' ? 'h-full rounded-full bg-red-500' : uploadProgress.status === 'done' ? 'h-full rounded-full bg-emerald-500' : 'h-full rounded-full bg-blue-600'} style={{ width: `${uploadProgress.percent}%` }} />
-            </div>
-            {uploadProgress.files.length > 0 ? <div className="mt-4 grid max-h-64 gap-3 overflow-y-auto pr-1">{uploadProgress.files.map((file, index) => <div key={`${file.name}-${file.size}-${index}`} className="grid gap-1 rounded-xl bg-slate-50 p-3"><div className="flex min-w-0 items-center justify-between gap-3 text-sm"><p className="min-w-0 flex-1 truncate font-semibold" title={file.name}>{file.name}</p><span className="shrink-0 text-xs text-slate-500">{file.percent}%</span></div><div className="flex items-center justify-between gap-3 text-xs text-slate-500"><span>{formatBytes(file.size)}</span><div className="flex items-center gap-2">{file.status === 'error' && <Button variant="outline" size="sm" className="h-6 px-2 text-[11px] font-extrabold text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => retryFailedUpload(file.name)}>Retry</Button>}<span className={file.status === 'error' ? 'font-semibold text-red-600' : file.status === 'done' ? 'font-semibold text-emerald-600' : 'font-semibold text-blue-600'}>{file.status === 'error' ? 'Failed' : file.status === 'done' ? 'Done' : file.percent >= 99 ? 'Processing' : 'Uploading'}</span></div></div><div className="h-1.5 rounded-full bg-slate-200"><div className={file.status === 'error' ? 'h-full rounded-full bg-red-500' : file.status === 'done' ? 'h-full rounded-full bg-emerald-500' : 'h-full rounded-full bg-blue-600'} style={{ width: `${file.percent}%` }} /></div></div>)}</div> : null}
-          </div>
-        </div>
-      ) : null}
     </>
   )
 }

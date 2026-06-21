@@ -20,12 +20,16 @@ import {
   X,
   ShieldCheck,
   HardDrive,
-  Info
+  Info,
+  CheckCircle,
+  ChevronDown,
+  Upload
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/drive/BrandLogo'
 import { Input } from '@/components/ui/input'
 import { apiFetch, formatBytes } from '@/lib/api'
+import { useUpload } from '@/context/UploadContext'
 import { clearAuthSession, getStoredUser, updateStoredUser, type AuthUser } from '@/lib/auth'
 import { getGravatarUrl } from '@/lib/gravatar'
 import { cn } from '@/lib/utils'
@@ -189,6 +193,8 @@ export function DriveLayout() {
   const [storage, setStorage] = useState<StorageSummary | null>(null)
   const [breakdown, setBreakdown] = useState<StorageBreakdown>({ photo: '0', video: '0', document: '0' })
   const [infoOpen, setInfoOpen] = useState(false)
+  const { uploadProgress, setUploadProgress, retryFailedUpload } = useUpload()
+  const [uploadProgressCollapsed, setUploadProgressCollapsed] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('9drive:theme')
     if (saved === 'light' || saved === 'dark') return saved
@@ -475,6 +481,60 @@ export function DriveLayout() {
           <Outlet />
         </section>
       </div>
+
+      {uploadProgress.open ? (
+        <div className="fixed inset-x-3 bottom-3 z-[70] max-h-[70dvh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-[min(420px,calc(100vw-2.5rem))]">
+          <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+            <div className="flex items-center gap-2 font-extrabold text-sm text-slate-950">
+              {uploadProgress.status === 'done' ? <CheckCircle className="h-5 w-5 text-emerald-500" /> : uploadProgress.status === 'partial' || uploadProgress.status === 'error' ? <X className="h-5 w-5 text-red-500" /> : <Upload className="h-5 w-5 text-blue-600" />}
+              {uploadProgress.status === 'done' ? 'Upload complete' : uploadProgress.status === 'partial' ? 'Upload completed with errors' : uploadProgress.status === 'error' ? 'Upload failed' : uploadProgress.percent >= 99 ? 'Processing on server' : 'Uploading files'}
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setUploadProgressCollapsed(!uploadProgressCollapsed)}><ChevronDown className={cn("h-4 w-4 transition-transform", uploadProgressCollapsed && "rotate-180")} /></Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setUploadProgress((current) => ({ ...current, open: false }))}><X className="h-4 w-4" /></Button>
+            </div>
+          </div>
+          {!uploadProgressCollapsed && (
+            <div className="p-4">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <p className="truncate font-semibold">{uploadProgress.fileName}</p>
+                <span className="text-slate-500">{uploadProgress.percent}%</span>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-slate-100">
+                <div className={uploadProgress.status === 'error' || uploadProgress.status === 'partial' ? 'h-full rounded-full bg-red-500' : uploadProgress.status === 'done' ? 'h-full rounded-full bg-emerald-500' : 'h-full rounded-full bg-blue-600'} style={{ width: `${uploadProgress.percent}%` }} />
+              </div>
+              {uploadProgress.files.length > 0 ? (
+                <div className="mt-4 grid max-h-64 gap-3 overflow-y-auto pr-1 text-slate-950">
+                  {uploadProgress.files.map((file, index) => (
+                    <div key={`${file.name}-${file.size}-${index}`} className="grid gap-1 rounded-xl bg-slate-50 p-3">
+                      <div className="flex min-w-0 items-center justify-between gap-3 text-sm">
+                        <p className="min-w-0 flex-1 truncate font-semibold" title={file.name}>{file.name}</p>
+                        <span className="shrink-0 text-xs text-slate-500">{file.percent}%</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                        <span>{formatBytes(file.size)}</span>
+                        <div className="flex items-center gap-2">
+                          {file.status === 'error' && (
+                            <Button variant="outline" size="sm" className="h-6 px-2 text-[11px] font-extrabold text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => retryFailedUpload(file.name)}>
+                              Retry
+                            </Button>
+                          )}
+                          <span className={file.status === 'error' ? 'font-semibold text-red-600' : file.status === 'done' ? 'font-semibold text-emerald-600' : 'font-semibold text-blue-600'}>
+                            {file.status === 'error' ? 'Failed' : file.status === 'done' ? 'Done' : file.percent >= 99 ? 'Processing' : 'Uploading'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-200">
+                        <div className={file.status === 'error' ? 'h-full rounded-full bg-red-500' : file.status === 'done' ? 'h-full rounded-full bg-emerald-500' : 'h-full rounded-full bg-blue-600'} style={{ width: `${file.percent}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      ) : null}
     </main>
   )
 }
