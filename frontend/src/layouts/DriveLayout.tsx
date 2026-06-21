@@ -20,7 +20,6 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { BrandLogo } from '@/components/drive/BrandLogo'
 import { Input } from '@/components/ui/input'
 import { apiFetch, formatBytes, formatDate } from '@/lib/api'
@@ -35,6 +34,8 @@ const menu = [
   { label: 'Starred', icon: Star, href: '/starred', disabled: true },
   { label: 'Recycle Bin', icon: Trash2, href: '/trash' },
   { label: 'Activity Log', icon: History, href: '/activity' },
+  { label: 'Setting', icon: Settings, href: '/settings' },
+  { label: 'API Keys', icon: Braces, href: '/api' },
 ]
 
 type StorageSummary = {
@@ -112,57 +113,55 @@ function Sidebar({ onNavigate, user, storage, breakdown, onLogout }: { onNavigat
   }, [user?.email])
 
   return (
-    <aside className="flex h-full w-72 flex-col border-slate-200 bg-white p-5 lg:border-r">
-      <div className="flex items-center gap-3 pb-5">
-        <BrandLogo />
-        <span className="text-2xl font-extrabold tracking-tight">9Drive</span>
+    <aside className="flex h-full w-64 flex-col border-slate-200/60 bg-slate-50/40 backdrop-blur-xl p-4 lg:border-r">
+      <div className="flex items-center gap-2.5 pb-3 pt-1">
+        <BrandLogo className="h-8 w-8" />
+        <span className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">9Drive</span>
       </div>
 
-      <div className="flex items-center gap-3 border-y border-slate-200 py-5">
-        <img src={profileImageUrl} alt="User avatar" className="h-10 w-10 rounded-full object-cover" />
+      <div className="flex items-center gap-2.5 border-y border-slate-200/60 py-3 my-3">
+        <img src={profileImageUrl} alt="User avatar" className="h-8 w-8 rounded-full border border-slate-200 object-cover" />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-bold">{user?.name ?? 'User'}</p>
-          <p className="truncate text-sm text-slate-500">{user?.email ?? 'Loading...'}</p>
+          <p className="truncate text-sm font-bold text-slate-900 leading-none">{user?.name ?? 'User'}</p>
+          <p className="truncate text-[11px] text-slate-500 mt-1">{user?.email ?? 'Loading...'}</p>
         </div>
-        <MoreVertical className="h-5 w-5 text-slate-500" />
+        <MoreVertical className="h-4 w-4 text-slate-400" />
       </div>
 
-      <nav className="mt-6 grid gap-2">
+      <nav className="grid gap-1">
         {menu.map((item) => item.disabled ? (
-          <button key={item.label} type="button" disabled className="inline-flex h-11 cursor-not-allowed items-center gap-2 rounded-xl px-4 text-sm font-semibold text-slate-400 opacity-70">
-            <item.icon className="h-5 w-5" />
+          <button key={item.label} type="button" disabled className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-xl px-3.5 text-xs font-bold text-slate-400 opacity-60">
+            <item.icon className="h-4 w-4" />
             {item.label}
           </button>
         ) : (
-          <NavLink key={item.label} to={item.href} onClick={onNavigate} className={({ isActive }) => cn('inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all', isActive ? 'bg-slate-100 text-slate-950 shadow-sm' : 'text-slate-700 hover:bg-slate-100')}>
-            <item.icon className="h-5 w-5" />
+          <NavLink key={item.label} to={item.href} onClick={onNavigate} className={({ isActive }) => cn('inline-flex h-9 items-center gap-2.5 rounded-xl px-3.5 text-xs font-bold transition-all border border-transparent', isActive ? 'bg-blue-600/10 text-blue-600 border-blue-600/10 shadow-sm' : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900')}>
+            <item.icon className="h-4 w-4" />
             {item.label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="mt-5 border-t border-slate-200 pt-5">
-        <NavLink to="/settings" onClick={onNavigate} className={({ isActive }) => cn('inline-flex h-11 w-full items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all', isActive ? 'bg-slate-100 text-slate-950 shadow-sm' : 'text-slate-700 hover:bg-slate-100')}>
-          <Settings className="h-5 w-5" />Setting
-        </NavLink>
-        <NavLink to="/api" onClick={onNavigate} className={({ isActive }) => cn('mt-2 inline-flex h-11 w-full items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-all', isActive ? 'bg-slate-100 text-slate-950 shadow-sm' : 'text-slate-700 hover:bg-slate-100')}>
-          <Braces className="h-5 w-5" />API
-        </NavLink>
-      </div>
-
-      <Card className="mt-6 p-4 lg:mt-auto">
-        {items.map(([label, value, color]) => (
-          <div key={label} className="mb-3 flex items-center justify-between text-sm">
-            <span className="flex items-center gap-3"><span className={cn('h-4 w-4 rounded', color)} />{label}</span>
-            <span className="font-semibold">{value}</span>
-          </div>
-        ))}
-        <div className="mt-4 border-t border-slate-200 pt-4 text-sm">
-          <p><b>{formatBytes(storage?.usedBytes)}</b> used of <span className="text-slate-500">{formatBytes(storage?.totalBytes)}</span></p>
-          <div className="my-3 h-1.5 rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${progress}%` }} /></div>
-          <Button variant="danger" className="mt-4 w-full justify-start" onClick={onLogout}><LogOut className="h-5 w-5" />Log Out</Button>
+      <div className="mt-auto border-t border-slate-200/60 pt-4 text-[11px]">
+        <div className="mb-3 space-y-1">
+          {items.map(([label, value, color]) => (
+            <div key={label} className="flex items-center justify-between text-slate-500 font-medium">
+              <span className="flex items-center gap-1.5"><span className={cn('h-1.5 w-1.5 rounded-full', color)} />{label}</span>
+              <span className="font-semibold text-slate-700">{value}</span>
+            </div>
+          ))}
         </div>
-      </Card>
+        <div className="flex justify-between font-bold text-slate-700">
+          <span>{formatBytes(storage?.usedBytes)} used</span>
+          <span className="text-slate-400">{formatBytes(storage?.totalBytes)}</span>
+        </div>
+        <div className="my-2 h-1.5 rounded-full bg-slate-200/60 overflow-hidden">
+          <div className="h-full rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${progress}%` }} />
+        </div>
+        <Button variant="danger" size="sm" className="mt-3 w-full justify-start h-9 px-3 text-xs font-bold" onClick={onLogout}>
+          <LogOut className="h-4 w-4" />Log Out
+        </Button>
+      </div>
     </aside>
   )
 }
