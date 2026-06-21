@@ -16,7 +16,7 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:4000/connected-accounts/google/callback}
     ports:
-      - "4000:4000"
+      - "4001:4000"
     volumes:
       - sqlite_data:/app/prisma
 
@@ -30,7 +30,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "5173:80"
+      - "5174:80"
 
 volumes:
   sqlite_data:
