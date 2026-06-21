@@ -31,6 +31,14 @@
   --slate-50-override: #f8fafc;
   --slate-100-override: #f1f5f9;
   --slate-200-override: #e2e8f0;
+
+  /* Overrides for Alerts/Status messages */
+  --blue-bg-override: #eff6ff;
+  --blue-text-override: #1e40af;
+  --emerald-bg-override: #ecfdf5;
+  --emerald-text-override: #065f46;
+  --red-bg-override: #fef2f2;
+  --red-text-override: #991b1b;
 }
 
 :root.dark {
@@ -63,6 +71,14 @@
   --slate-50-override: rgba(255, 255, 255, 0.03);
   --slate-100-override: rgba(255, 255, 255, 0.08);
   --slate-200-override: rgba(255, 255, 255, 0.15);
+
+  /* Overrides for Alerts/Status messages in Dark Mode */
+  --blue-bg-override: rgba(59, 130, 246, 0.15);
+  --blue-text-override: #93c5fd;
+  --emerald-bg-override: rgba(16, 185, 129, 0.15);
+  --emerald-text-override: #6ee7b7;
+  --red-bg-override: rgba(239, 68, 68, 0.15);
+  --red-text-override: #fca5a5;
 }
 
 :root {
@@ -117,6 +133,26 @@ section.bg-white:not(button) {
 }
 .bg-slate-200 {
   background-color: var(--slate-200-override) !important;
+}
+
+/* Map Tailwind Alert background and text utilities to theme variables */
+.bg-blue-50 {
+  background-color: var(--blue-bg-override) !important;
+}
+.text-blue-700 {
+  color: var(--blue-text-override) !important;
+}
+.bg-emerald-50 {
+  background-color: var(--emerald-bg-override) !important;
+}
+.text-emerald-700 {
+  color: var(--emerald-text-override) !important;
+}
+.bg-red-50 {
+  background-color: var(--red-bg-override) !important;
+}
+.text-red-700 {
+  color: var(--red-text-override) !important;
 }
 
 /* Hover effects for background classes */
