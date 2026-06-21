@@ -478,6 +478,54 @@ docker compose down -v
 - Rebuild frontend when `VITE_API_URL` changes because Vite embeds env at build time.
 - Rebuild frontend when `VITE_RECAPTCHA_SITE_KEY` changes because Vite embeds env at build time.
 
+### VPS Deployment (Step-by-Step)
+
+Follow these steps to deploy 9Drive to a VPS (such as Ubuntu/Debian) using Docker:
+
+#### 1. Install Docker & Docker Compose on your VPS
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose
+sudo systemctl enable --now docker
+```
+
+#### 2. Clone the Repository
+```bash
+git clone https://github.com/your-github-username/9drive.git
+cd 9drive
+```
+
+#### 3. Setup the Production Environment
+Copy the example environment file to `.env`:
+```bash
+cp .env.docker.example .env
+```
+Edit the `.env` file (e.g., `nano .env`) and configure the values for your production VPS domain/IP:
+* **`FRONTEND_URL`**: Set to your public domain or VPS IP (e.g., `http://103.xxx.xxx.xxx:5173` or `https://9drive.yourdomain.com`).
+* **`VITE_API_URL`**: Set to your public backend URL (e.g., `http://103.xxx.xxx.xxx:4000` or `https://api.9drive.yourdomain.com`).
+* **`GOOGLE_REDIRECT_URI`**: Set to your public redirect callback URL (e.g., `http://103.xxx.xxx.xxx:4000/connected-accounts/google/callback`).
+* Set secure credentials for **`JWT_ACCESS_SECRET`** and **`TOKEN_ENCRYPTION_KEY`** (encryption key must be exactly 32 characters/bytes).
+* Add your **`GOOGLE_CLIENT_ID`** and **`GOOGLE_CLIENT_SECRET`**.
+
+#### 4. Deploy the Containers
+Run Docker Compose to build and start the database, backend, and frontend containers in the background:
+```bash
+docker compose up -d --build
+```
+
+#### 5. Seed the Google Configuration
+Initialize the encrypted Google configuration in the database:
+```bash
+docker compose exec backend npm run seed:google-config
+```
+
+#### 6. Add Authorized URIs in Google Cloud Console
+1. Go to **APIs & Services** -> **Credentials** in the Google Cloud Console.
+2. Edit your OAuth 2.0 Web Client.
+3. In **Authorized JavaScript origins**, add your frontend URL (e.g., `http://your-vps-ip:5173` or `https://9drive.yourdomain.com`).
+4. In **Authorized redirect URIs**, add your redirect URI (e.g., `http://your-vps-ip:4000/connected-accounts/google/callback` or `https://api.9drive.yourdomain.com/connected-accounts/google/callback`).
+5. Save changes.
+
 ### Non-Docker Production Startup
 
 Run production migrations before starting the backend:
