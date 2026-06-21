@@ -605,7 +605,7 @@ export function AllFilesPage() {
               className={[
                 'rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide transition-all',
                 folderSizeScale === s
-                  ? 'bg-white text-slate-900 shadow-sm'
+                  ? 'bg-white text-slate-800 shadow-sm'
                   : 'text-slate-400 hover:text-slate-600',
               ].join(' ')}
               aria-label={`Folder size ${s}`}
@@ -662,7 +662,7 @@ export function AllFilesPage() {
         <Button size="sm" variant="outline" disabled={syncingDrive} onClick={syncGoogleDrive}><RefreshCw className={syncingDrive ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />{syncingDrive ? 'Syncing...' : 'Sync'}</Button>
         <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-50 p-0.5">
           {(['xs','sm','md','lg'] as FolderSizeScale[]).map((s) => (
-            <button key={s} type="button" onClick={() => changeFolderSize(s)} className={['rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wide transition-all', folderSizeScale === s ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'].join(' ')} aria-label={`Folder size ${s}`}>{s}</button>
+            <button key={s} type="button" onClick={() => changeFolderSize(s)} className={['rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wide transition-all', folderSizeScale === s ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'].join(' ')} aria-label={`Folder size ${s}`}>{s}</button>
           ))}
         </div>
       </div>
