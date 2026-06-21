@@ -18,11 +18,14 @@ import {
   Sun,
   Trash2,
   X,
+  ShieldCheck,
+  HardDrive,
+  Info
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/drive/BrandLogo'
 import { Input } from '@/components/ui/input'
-import { apiFetch, formatBytes, formatDate } from '@/lib/api'
+import { apiFetch, formatBytes } from '@/lib/api'
 import { clearAuthSession, getStoredUser, updateStoredUser, type AuthUser } from '@/lib/auth'
 import { getGravatarUrl } from '@/lib/gravatar'
 import { cn } from '@/lib/utils'
@@ -50,48 +53,52 @@ type StorageBreakdown = {
   document: string
 }
 
-type RepoUpdate = {
-  sha: string
-  title: string
-  author: string
-  date: string
-  url: string
-}
+function SystemInfoDropdown({ storage }: { storage: any }) {
+  const activeGoogle = storage?.accounts?.filter((a: any) => a.provider === 'google_drive' && a.status === 'connected') ?? []
 
-type GitHubCommit = {
-  sha: string
-  html_url: string
-  commit: {
-    message: string
-    author?: {
-      name?: string
-      date?: string
-    }
-  }
-}
-
-function RepoUpdatesDropdown({ updates, loading, error }: { updates: RepoUpdate[]; loading: boolean; error: string }) {
   return (
-    <div className="absolute right-0 top-12 z-50 w-[min(calc(100vw-2rem),24rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <p className="text-sm font-extrabold text-slate-950">Repository Updates</p>
-        <p className="text-xs text-slate-500">Latest commits from zenhosta/9drive</p>
+    <div className="absolute right-0 top-12 z-50 w-[min(calc(100vw-2rem),22rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
+      <div className="border-b border-slate-200 px-4 py-3 bg-slate-50/50">
+        <p className="text-sm font-extrabold text-slate-950">Workspace Status & Info</p>
+        <p className="text-xs text-slate-500">Overview of your connections & guidelines</p>
       </div>
-      <div className="max-h-96 overflow-y-auto p-2">
-        {loading ? <p className="p-4 text-sm text-slate-500">Loading updates...</p> : null}
-        {error ? <p className="p-4 text-sm text-red-600">{error}</p> : null}
-        {!loading && !error && updates.length === 0 ? <p className="p-4 text-sm text-slate-500">No updates found.</p> : null}
-        {!loading && !error ? updates.map((update) => (
-          <a key={update.sha} href={update.url} target="_blank" rel="noreferrer" className="block rounded-xl p-3 transition hover:bg-slate-50">
-            <div className="flex items-start justify-between gap-3">
-              <p className="line-clamp-2 min-w-0 text-sm font-bold leading-snug text-slate-950">{update.title}</p>
-              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">{update.sha}</span>
+      <div className="max-h-96 overflow-y-auto p-4 space-y-4">
+        {/* Connection status */}
+        <div>
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Connection Status</h4>
+          <div className="mt-2 space-y-2">
+            <div className="flex items-center justify-between text-xs rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+              <span className="font-semibold text-slate-700">Google Drive accounts</span>
+              <span className={activeGoogle.length > 0 ? "text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold border border-emerald-100" : "text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-bold border border-amber-100"}>
+                {activeGoogle.length} Connected
+              </span>
             </div>
-            <p className="mt-1 truncate text-xs text-slate-500">{update.author} • {update.date}</p>
-          </a>
-        )) : null}
+            {activeGoogle.map((acc: any) => (
+              <p key={acc.id} className="text-[11px] text-slate-500 truncate px-2.5">— {acc.email}</p>
+            ))}
+          </div>
+        </div>
+
+        {/* Database & engine status */}
+        <div>
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><HardDrive className="h-3.5 w-3.5 text-blue-500" /> Storage Engine</h4>
+          <div className="mt-2 text-xs text-slate-600 space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+            <p>• <b>DB Type:</b> SQLite (Local Database)</p>
+            <p>• <b>Upload Folder:</b> Google Drive dedicated <code>9drive</code></p>
+            <p>• <b>Max Upload Size:</b> 5 GB per stream</p>
+          </div>
+        </div>
+
+        {/* Tips & Guides */}
+        <div>
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5"><Info className="h-3.5 w-3.5 text-indigo-500" /> Usage Tips</h4>
+          <ul className="mt-2 text-[11px] text-slate-500 list-disc list-inside space-y-1 pl-1">
+            <li>Virtual folders exist only in your SQLite database.</li>
+            <li>Physical files are always uploaded straight to Google Drive.</li>
+            <li>Use the Sync button to fetch changes made directly on Drive.</li>
+          </ul>
+        </div>
       </div>
-      <a href="https://github.com/zenhosta/9drive" target="_blank" rel="noreferrer" className="block border-t border-slate-200 px-4 py-3 text-sm font-bold text-blue-600 hover:bg-blue-50">View repository</a>
     </div>
   )
 }
@@ -122,27 +129,27 @@ function Sidebar({ onNavigate, user, storage, breakdown, onLogout }: { onNavigat
       <div className="flex items-center gap-2.5 border-y border-slate-200/60 py-3 my-3">
         <img src={profileImageUrl} alt="User avatar" className="h-8 w-8 rounded-full border border-slate-200 object-cover" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-slate-900 leading-none">{user?.name ?? 'User'}</p>
-          <p className="truncate text-[11px] text-slate-500 mt-1">{user?.email ?? 'Loading...'}</p>
+          <p className="truncate text-[15px] font-bold text-slate-900 leading-none">{user?.name ?? 'User'}</p>
+          <p className="truncate text-xs text-slate-500 mt-1">{user?.email ?? 'Loading...'}</p>
         </div>
         <MoreVertical className="h-4 w-4 text-slate-400" />
       </div>
 
       <nav className="grid gap-1">
         {menu.map((item) => item.disabled ? (
-          <button key={item.label} type="button" disabled className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-xl px-3.5 text-xs font-bold text-slate-400 opacity-60">
+          <button key={item.label} type="button" disabled className="inline-flex h-10 cursor-not-allowed items-center gap-2 rounded-xl px-3.5 text-[13px] font-bold text-slate-400 opacity-60">
             <item.icon className="h-4 w-4" />
             {item.label}
           </button>
         ) : (
-          <NavLink key={item.label} to={item.href} onClick={onNavigate} className={({ isActive }) => cn('inline-flex h-9 items-center gap-2.5 rounded-xl px-3.5 text-xs font-bold transition-all border border-transparent', isActive ? 'bg-blue-600/10 text-blue-600 border-blue-600/10 shadow-sm' : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900')}>
+          <NavLink key={item.label} to={item.href} onClick={onNavigate} className={({ isActive }) => cn('inline-flex h-10 items-center gap-2.5 rounded-xl px-3.5 text-[13px] font-bold transition-all border border-transparent', isActive ? 'bg-blue-600/10 text-blue-600 border-blue-600/10 shadow-sm' : 'text-slate-600 hover:bg-slate-200/50 hover:text-slate-900')}>
             <item.icon className="h-4 w-4" />
             {item.label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="mt-auto border-t border-slate-200/60 pt-4 text-[11px]">
+      <div className="mt-auto border-t border-slate-200/60 pt-4 text-xs">
         <div className="mb-3 space-y-1">
           {items.map(([label, value, color]) => (
             <div key={label} className="flex items-center justify-between text-slate-500 font-medium">
@@ -158,7 +165,7 @@ function Sidebar({ onNavigate, user, storage, breakdown, onLogout }: { onNavigat
         <div className="my-2 h-1.5 rounded-full bg-slate-200/60 overflow-hidden">
           <div className="h-full rounded-full bg-blue-600 transition-all duration-300" style={{ width: `${progress}%` }} />
         </div>
-        <Button variant="danger" size="sm" className="mt-3 w-full justify-start h-9 px-3 text-xs font-bold" onClick={onLogout}>
+        <Button variant="danger" size="sm" className="mt-3 w-full justify-start h-10 px-3 text-[13px] font-bold" onClick={onLogout}>
           <LogOut className="h-4 w-4" />Log Out
         </Button>
       </div>
@@ -181,11 +188,7 @@ export function DriveLayout() {
   const [user, setUser] = useState<AuthUser | null>(getStoredUser())
   const [storage, setStorage] = useState<StorageSummary | null>(null)
   const [breakdown, setBreakdown] = useState<StorageBreakdown>({ photo: '0', video: '0', document: '0' })
-  const [updatesOpen, setUpdatesOpen] = useState(false)
-  const [updates, setUpdates] = useState<RepoUpdate[]>([])
-  const [updatesLoading, setUpdatesLoading] = useState(false)
-  const [updatesError, setUpdatesError] = useState('')
-  const [updatesLoaded, setUpdatesLoaded] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('9drive:theme')
     if (saved === 'light' || saved === 'dark') return saved
@@ -330,35 +333,6 @@ export function DriveLayout() {
     applyFilters()
   }
 
-  async function loadRepoUpdates() {
-    setUpdatesLoading(true)
-    setUpdatesError('')
-    try {
-      const response = await fetch('https://api.github.com/repos/zenhosta/9drive/commits?per_page=5', {
-        headers: { Accept: 'application/vnd.github+json' },
-      })
-      if (!response.ok) throw new Error(response.status === 403 ? 'GitHub rate limit reached. Try again later.' : 'Failed to load repository updates.')
-      const commits = await response.json() as GitHubCommit[]
-      setUpdates(commits.map((item) => ({
-        sha: item.sha.slice(0, 7),
-        title: item.commit.message.split('\n')[0] || 'Repository update',
-        author: item.commit.author?.name ?? 'GitHub',
-        date: item.commit.author?.date ? formatDate(item.commit.author.date) : '--',
-        url: item.html_url,
-      })))
-      setUpdatesLoaded(true)
-    } catch (error) {
-      setUpdatesError(error instanceof Error ? error.message : 'Failed to load repository updates.')
-    } finally {
-      setUpdatesLoading(false)
-    }
-  }
-
-  function toggleRepoUpdates() {
-    setUpdatesOpen((open) => !open)
-    if (!updatesLoaded && !updatesLoading) loadRepoUpdates().catch(() => undefined)
-  }
-
   useEffect(() => {
     apiFetch<{ user: AuthUser }>('/auth/me')
       .then((data) => {
@@ -374,7 +348,7 @@ export function DriveLayout() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setUpdatesOpen(false)
+      if (event.key === 'Escape') setInfoOpen(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -412,11 +386,11 @@ export function DriveLayout() {
                   {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
                 </Button>
                 <div className="relative shrink-0">
-                  <Button variant="outline" size="icon" className="relative" aria-label="Repository updates" aria-expanded={updatesOpen} onClick={toggleRepoUpdates}>
+                  <Button variant="outline" size="icon" className="relative" aria-label="System info" aria-expanded={infoOpen} onClick={() => setInfoOpen(!infoOpen)}>
                     <Bell className="h-5 w-5" />
-                    {!updatesOpen ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-600" /> : null}
+                    {!infoOpen ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-600" /> : null}
                   </Button>
-                  {updatesOpen ? <RepoUpdatesDropdown updates={updates} loading={updatesLoading} error={updatesError} /> : null}
+                  {infoOpen ? <SystemInfoDropdown storage={storage} /> : null}
                 </div>
               </div>
             </div>
@@ -430,7 +404,7 @@ export function DriveLayout() {
               {filtersOpen && (
                 <div className="absolute left-0 right-0 top-12 z-50 rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <span className="text-sm font-extrabold text-slate-900">Advanced Search Filters</span>
+                    <span className="text-sm font-extrabold text-slate-950">Advanced Search Filters</span>
                     <button type="button" onClick={clearFilters} className="text-xs font-bold text-blue-600 hover:text-blue-700">Clear All</button>
                   </div>
                   
@@ -491,11 +465,11 @@ export function DriveLayout() {
               <Button variant="outline" size="icon" aria-label="Toggle theme" onClick={toggleTheme}>
                 {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
               </Button>
-              <Button variant="outline" size="icon" className="relative" aria-label="Repository updates" aria-expanded={updatesOpen} onClick={toggleRepoUpdates}>
+              <Button variant="outline" size="icon" className="relative" aria-label="System info" aria-expanded={infoOpen} onClick={() => setInfoOpen(!infoOpen)}>
                 <Bell className="h-5 w-5" />
-                {!updatesOpen ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-600" /> : null}
+                {!infoOpen ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-600" /> : null}
               </Button>
-              {updatesOpen ? <RepoUpdatesDropdown updates={updates} loading={updatesLoading} error={updatesError} /> : null}
+              {infoOpen ? <SystemInfoDropdown storage={storage} /> : null}
             </div>
           </header>
           <Outlet />
