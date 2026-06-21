@@ -7,12 +7,14 @@ import {
   Gauge,
   LogOut,
   Menu,
+  Moon,
   MoreVertical,
   Search,
   Settings,
   Share2,
   SlidersHorizontal,
   Star,
+  Sun,
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -175,6 +177,27 @@ export function DriveLayout() {
   const [updatesLoading, setUpdatesLoading] = useState(false)
   const [updatesError, setUpdatesError] = useState('')
   const [updatesLoaded, setUpdatesLoaded] = useState(false)
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('9drive:theme')
+    if (saved === 'light' || saved === 'dark') return saved
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'dark') {
+      root.classList.add('dark')
+      root.classList.remove('light')
+    } else {
+      root.classList.add('light')
+      root.classList.remove('dark')
+    }
+    localStorage.setItem('9drive:theme', theme)
+  }, [theme])
+
+  function toggleTheme() {
+    setTheme((t) => (t === 'light' ? 'dark' : 'light'))
+  }
 
   async function loadSidebarStats() {
     await Promise.all([
@@ -278,12 +301,17 @@ export function DriveLayout() {
                   <span className="truncate text-xl font-extrabold tracking-tight">9Drive</span>
                 </div>
               </div>
-              <div className="relative shrink-0">
-                <Button variant="outline" size="icon" className="relative" aria-label="Repository updates" aria-expanded={updatesOpen} onClick={toggleRepoUpdates}>
-                  <Bell className="h-5 w-5" />
-                  {!updatesOpen ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-600" /> : null}
+              <div className="flex gap-2">
+                <Button variant="outline" size="icon" aria-label="Toggle theme" onClick={toggleTheme}>
+                  {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
                 </Button>
-                {updatesOpen ? <RepoUpdatesDropdown updates={updates} loading={updatesLoading} error={updatesError} /> : null}
+                <div className="relative shrink-0">
+                  <Button variant="outline" size="icon" className="relative" aria-label="Repository updates" aria-expanded={updatesOpen} onClick={toggleRepoUpdates}>
+                    <Bell className="h-5 w-5" />
+                    {!updatesOpen ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-600" /> : null}
+                  </Button>
+                  {updatesOpen ? <RepoUpdatesDropdown updates={updates} loading={updatesLoading} error={updatesError} /> : null}
+                </div>
               </div>
             </div>
             <form onSubmit={searchFiles} className="relative w-full min-w-0 flex-1 xl:max-w-xl">
@@ -291,7 +319,10 @@ export function DriveLayout() {
               <Input value={searchValue} onChange={(event) => setSearchValue(event.target.value)} placeholder="Search Documents" className="pl-11 pr-12" />
               <button type="submit" className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500" aria-label="Search files"><SlidersHorizontal className="h-5 w-5" /></button>
             </form>
-            <div className="relative hidden flex-wrap gap-3 lg:flex">
+             <div className="relative hidden flex-wrap gap-3 lg:flex">
+              <Button variant="outline" size="icon" aria-label="Toggle theme" onClick={toggleTheme}>
+                {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+              </Button>
               <Button variant="outline" size="icon" className="relative" aria-label="Repository updates" aria-expanded={updatesOpen} onClick={toggleRepoUpdates}>
                 <Bell className="h-5 w-5" />
                 {!updatesOpen ? <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-blue-600" /> : null}

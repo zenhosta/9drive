@@ -1,0 +1,10 @@
+﻿{
+  "name": "9drive-root",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npx concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

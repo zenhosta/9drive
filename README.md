@@ -66,13 +66,33 @@ user: root
 password: empty
 ```
 
-## 1. Clone And Install
+## 1. Quick Setup & Installation (Recommended)
 
-```bash
-git clone git@github.com:zenhosta/9drive.git
-cd 9drive
+The easiest way to set up and run the project is using the automated setup script. It automatically generates all environment files with secure keys, installs dependencies, handles Prisma migrations, and configures either **SQLite** (zero installation/config) or **MySQL**.
+
+### Windows (PowerShell)
+Open PowerShell in the project root directory and run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
+1. **Database**: Choose **SQLite (Option 1)** for zero-configuration, or **MySQL (Option 2)**.
+2. **Google Credentials**: Enter Client ID/Secret or skip (press Enter) to set up later.
+
+Once setup is complete, run the entire application (both frontend and backend) in one command:
+
+```bash
+npm run dev
+```
+
+---
+
+## 2. Manual Installation (Alternative)
+
+If you prefer to configure the project manually:
+
+### 2.1 Install Dependencies
 Install backend dependencies:
 
 ```bash
@@ -87,21 +107,18 @@ cd ../frontend
 npm install
 ```
 
-## 2. Create MySQL Database
-
-Create database:
-
+### 2.2 Create Database (For MySQL)
+Create a database:
 ```sql
 CREATE DATABASE 9drive;
 ```
-
 If using MySQL CLI:
-
 ```bash
 mysql -u root -e "CREATE DATABASE IF NOT EXISTS 9drive;"
 ```
 
-## 3. Backend Environment
+### 2.3 Environment Setup
+
 
 Create `backend/.env`:
 
