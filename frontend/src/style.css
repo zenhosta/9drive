@@ -297,19 +297,21 @@ button.bg-blue-600:active,
 }
 
 /* Secondary outline buttons */
-button.border-slate-200,
-.border-slate-200 {
+button.border-slate-200:not([style*="background-color"]),
+.border-slate-200:not([style*="background-color"]) {
   border-color: var(--outline-btn-border) !important;
   background: var(--outline-btn-bg) !important;
   color: var(--text-primary) !important;
   transition: all 0.3s ease;
 }
 
-button.border-slate-200:hover,
-.border-slate-200:hover {
+
+button.border-slate-200:not([style*="background-color"]):hover,
+.border-slate-200:not([style*="background-color"]):hover {
   background: var(--slate-100-override) !important;
   border-color: var(--outline-btn-border) !important;
 }
+
 
 /* Video Shell elements */
 .shared-video-shell {
