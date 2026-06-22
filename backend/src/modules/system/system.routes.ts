@@ -23,6 +23,10 @@ systemRouter.post('/update', requireAuth, (req, res, next) => {
 
     if (fs.existsSync(updateScript)) {
       try {
+        // Clear old update log to prevent race conditions on frontend polling
+        const logFile = path.join(projectRoot, 'update.log')
+        fs.writeFileSync(logFile, 'Initiating update...\n')
+
         const child = spawn('bash', ['update.sh'], {
           cwd: projectRoot,
           detached: true,
