@@ -543,7 +543,7 @@ export function DriveLayout() {
                         <span>{formatBytes(file.size)}</span>
                         <div className="flex items-center gap-2">
                           {file.status === 'error' && (
-                            <Button variant="outline" size="sm" className="h-6 px-2 text-[11px] font-extrabold text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => retryFailedUpload(file.name)}>
+                            <Button variant="default" className="h-6 px-2 text-[11px] font-extrabold text-white bg-blue-600 hover:bg-blue-700 shadow-none border-none" onClick={() => retryFailedUpload(file.name)}>
                               Retry
                             </Button>
                           )}
