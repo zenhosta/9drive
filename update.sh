@@ -23,6 +23,5 @@ npm install >> "$LOG_FILE" 2>&1
 npm run build >> "$LOG_FILE" 2>&1
 
 echo "4. Restarting application via PM2..." >> "$LOG_FILE"
-pm2 restart 9drive-backend >> "$LOG_FILE" 2>&1
-
 echo "=== System Update Completed: $(date) ===" >> "$LOG_FILE"
+pm2 restart 9drive-backend >> "$LOG_FILE" 2>&1
