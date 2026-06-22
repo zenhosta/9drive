@@ -707,7 +707,7 @@ export function AllFilesPage() {
       ) : (
         <Card className="mt-3 p-4 sm:p-5 bg-white/10 backdrop-blur-sm border border-white/20 dark:bg-transparent dark:border-0 dark:p-0 dark:shadow-none">
           {fileViewMode === 'grid' ? (
-            <FileGrid files={files} selectedFileIds={selectedFileIds} onToggleFile={toggleFileSelection} onFileContextMenu={openContext} />
+            <FileGrid files={files} selectedFileIds={selectedFileIds} sizeScale={folderSizeScale} onToggleFile={toggleFileSelection} onFileContextMenu={openContext} />
           ) : (
             <FileTable files={files} selectedFileIds={selectedFileIds} allSelected={allVisibleSelected} onToggleFile={toggleFileSelection} onToggleAll={toggleAllVisibleFiles} onFileContextMenu={openContext} />
           )}
