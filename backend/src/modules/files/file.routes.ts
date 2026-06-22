@@ -220,10 +220,7 @@ fileRouter.get('/shared-links', async (req: AuthRequest, res, next) => {
     })
     return res.json({
       shares: shares.filter((share) => share.file.status === 'active').map((share) => {
-        let url = share.token ? `${env.FRONTEND_URL}/public/files/${share.token}` : null
-        if (share.file.provider === 'google_drive') {
-          url = `https://drive.google.com/open?id=${share.file.providerFileId}`
-        }
+        const url = share.token ? `${env.FRONTEND_URL}/public/files/${share.token}` : null
         return {
           id: share.id,
           url,
@@ -296,11 +293,6 @@ fileRouter.post('/:id/share', async (req: AuthRequest, res, next) => {
       token = randomToken(32)
       const share = await prisma.fileShare.create({ data: { fileId: file.id, userId: req.user!.id, token, tokenHash: hashToken(token) } })
       shareId = share.id
-    }
-    
-    if (file.provider === 'google_drive') {
-      const url = `https://drive.google.com/open?id=${file.providerFileId}`
-      return res.status(existingShare ? 200 : 201).json({ url, shareId })
     }
     
     return res.status(existingShare ? 200 : 201).json({ url: `${env.FRONTEND_URL}/public/files/${token}`, shareId })
