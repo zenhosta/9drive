@@ -301,6 +301,29 @@ fileRouter.post('/:id/share', async (req: AuthRequest, res, next) => {
   }
 })
 
+fileRouter.post('/:id/public-permission', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const fileId = String(req.params.id)
+    const file = await prisma.file.findFirstOrThrow({ where: { id: fileId, userId: req.user!.id }, include: { connectedAccount: true } })
+    if (file.provider !== 'google_drive') {
+      return res.status(400).json({ code: 'UNSUPPORTED_PROVIDER', message: 'Only Google Drive files can be made public.' })
+    }
+    const auth = await getAuthedGoogleClient(file.connectedAccount)
+    const drive = google.drive({ version: 'v3', auth })
+    await drive.permissions.create({
+      fileId: file.providerFileId,
+      requestBody: {
+        role: 'writer',
+        type: 'anyone'
+      }
+    })
+    const metadata = await drive.files.get({ fileId: file.providerFileId, fields: 'webViewLink,webContentLink' })
+    return res.json({ status: 'ok', url: metadata.data.webViewLink ?? metadata.data.webContentLink })
+  } catch (error: any) {
+    return res.status(500).json({ code: 'GOOGLE_API_ERROR', message: error.message || 'Failed to update Google Drive permissions.' })
+  }
+})
+
 fileRouter.delete('/:id/share', async (req: AuthRequest, res, next) => {
   try {
     const fileId = String(req.params.id)
@@ -331,6 +354,20 @@ fileRouter.get('/:id/view-url', async (req: AuthRequest, res, next) => {
     if (file.provider === 's3') return res.json({ url: null })
     const auth = await getAuthedGoogleClient(file.connectedAccount)
     const drive = google.drive({ version: 'v3', auth })
+    
+    // Automatically set permission to public writer when retrieving/copying the view URL!
+    try {
+      await drive.permissions.create({
+        fileId: file.providerFileId,
+        requestBody: {
+          role: 'writer',
+          type: 'anyone'
+        }
+      })
+    } catch (err: any) {
+      console.error('Failed to make Google Drive file public during view-url retrieval:', err.message || err)
+    }
+
     const metadata = await drive.files.get({ fileId: file.providerFileId, fields: 'webViewLink,webContentLink' })
     return res.json({ url: metadata.data.webViewLink ?? metadata.data.webContentLink })
   } catch (error) {

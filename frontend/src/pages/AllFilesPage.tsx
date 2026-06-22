@@ -115,6 +115,8 @@ export function AllFilesPage() {
   const [folderContextMenu, setFolderContextMenu] = useState<{ x: number; y: number; folder: FolderItem | null }>({ x: 0, y: 0, folder: null })
   const [emptyContextMenu, setEmptyContextMenu] = useState<{ x: number; y: number; open: boolean }>({ x: 0, y: 0, open: false })
   const [message, setMessage] = useState('')
+  const [gdrivePublicUrl, setGdrivePublicUrl] = useState('')
+  const [makingPublic, setMakingPublic] = useState(false)
   const [loading, setLoading] = useState(false)
   const [syncingDrive, setSyncingDrive] = useState(false)
   const [fileViewMode, setFileViewMode] = useState<FileViewMode>(getStoredFileViewMode)
@@ -500,6 +502,8 @@ export function AllFilesPage() {
     const data = await apiFetch<{ url: string }>(`/files/${activeFile.id}/share`, { method: 'POST' })
     setShareUrl(data.url)
     setCopiedShareLink(false)
+    setGdrivePublicUrl('')
+    setMakingPublic(false)
     setShareOpen(true)
     setContextMenu({ x: 0, y: 0, file: null })
   }
@@ -769,7 +773,55 @@ export function AllFilesPage() {
       <DummyModal open={renameOpen} title="Rename File" description={activeFile?.name ?? ''} onClose={() => setRenameOpen(false)}><form onSubmit={renameFile} className="grid gap-4"><Input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} required /><div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setRenameOpen(false)}>Cancel</Button><Button>Rename</Button></div></form></DummyModal>
       <DummyModal open={moveOpen} title="Move to Folder" description={selectedFileIds.size > 0 ? `Move ${selectedFileIds.size} files` : activeFile?.name ?? ''} onClose={() => setMoveOpen(false)}><form onSubmit={moveFile} className="grid gap-4"><select className="h-11 rounded-xl border border-slate-200 px-3 text-sm" value={selectedFolderId} onChange={(event) => setSelectedFolderId(event.target.value)}><option value="">No folder</option>{allFolders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setMoveOpen(false)}>Cancel</Button><Button>Move</Button></div></form></DummyModal>
       <DummyModal open={deleteOpen} title={selectedFileIds.size > 0 ? 'Delete Files' : 'Delete File'} description={selectedFileIds.size > 0 ? `Delete ${selectedFileIds.size} files from Google Drive?` : `Delete ${activeFile?.name ?? 'file'} from Google Drive?`} onClose={() => setDeleteOpen(false)}><div className="flex justify-end gap-3"><Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button><Button variant="danger" onClick={deleteFile}>Delete</Button></div></DummyModal>
-      <DummyModal open={shareOpen} title="Share Link" description={activeFile?.name ?? ''} onClose={() => setShareOpen(false)}><div className="grid gap-4"><Input value={shareUrl} readOnly /><div className="flex justify-end gap-3"><Button variant="outline" onClick={() => setShareOpen(false)}>Close</Button><Button onClick={copyShareLink}>{copiedShareLink ? <CheckCircle className="h-4 w-4" /> : null}{copiedShareLink ? 'Copied!' : 'Copy Link'}</Button></div>{copiedShareLink ? <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">Share link copied to clipboard.</p> : null}</div></DummyModal>
+      <DummyModal open={shareOpen} title="Share Link" description={activeFile?.name ?? ''} onClose={() => setShareOpen(false)}>
+        <div className="grid gap-4">
+          <div>
+            <label className="text-xs font-bold text-slate-500 block mb-1">9Drive Public Share Link (No GDrive login required)</label>
+            <Input value={shareUrl} readOnly />
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setShareOpen(false)}>Close</Button>
+            <Button onClick={copyShareLink}>{copiedShareLink ? <CheckCircle className="h-4 w-4" /> : null}{copiedShareLink ? 'Copied!' : 'Copy Link'}</Button>
+          </div>
+          {copiedShareLink ? <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">Share link copied to clipboard.</p> : null}
+
+          {activeFile?.accountProvider === 'google_drive' && (
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 grid gap-3">
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">Google Drive Direct Link (Public Access)</label>
+                <p className="text-xs text-slate-500 mb-2">Configure this file to be publicly accessible on Google Drive so external tools can edit/download it.</p>
+              </div>
+              {gdrivePublicUrl ? (
+                <div className="grid gap-2">
+                  <Input value={gdrivePublicUrl} readOnly />
+                  <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">Google Drive public link generated and copied to clipboard!</p>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  disabled={makingPublic}
+                  onClick={async () => {
+                    if (!activeFile?.id) return
+                    setMakingPublic(true)
+                    try {
+                      const res = await apiFetch<{ url: string }>('/files/' + activeFile.id + '/public-permission', { method: 'POST' })
+                      setGdrivePublicUrl(res.url)
+                      await navigator.clipboard.writeText(res.url)
+                    } catch (err: any) {
+                      alert('Failed to update Google Drive permission: ' + (err.message || err))
+                    } finally {
+                      setMakingPublic(false)
+                    }
+                  }}
+                  className="w-full text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/50"
+                >
+                  {makingPublic ? 'Making Public...' : 'Make Public & Copy GDrive Link'}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </DummyModal>
       <DummyModal open={folderRenameOpen} title="Rename Folder" description={activeFolderForMenu?.name ?? ''} onClose={() => setFolderRenameOpen(false)}><form onSubmit={renameFolder} className="grid gap-4"><Input value={folderRenameValue} onChange={(event) => setFolderRenameValue(event.target.value)} required /><FolderAppearanceFields color={folderRenameColor} iconUrl={folderRenameIconUrl} onColorChange={setFolderRenameColor} onIconChange={setFolderRenameIconUrl} /><div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setFolderRenameOpen(false)}>Cancel</Button><Button>Rename</Button></div></form></DummyModal>
       <DummyModal open={folderDeleteOpen} title="Delete Folder" description={`Delete virtual folder ${activeFolderForMenu?.name ?? ''}? Files inside will remain uploaded.`} onClose={() => setFolderDeleteOpen(false)}><div className="flex justify-end gap-3"><Button variant="outline" onClick={() => setFolderDeleteOpen(false)}>Cancel</Button><Button variant="danger" onClick={deleteFolder}>Delete</Button></div></DummyModal>
       <DummyModal open={inviteOpen} title="Invite Member" description={`Share ${inviteTargetType === 'file' ? (activeFile?.name ?? 'file') : (activeFolderForMenu?.name ?? 'folder')} with a team member.`} onClose={() => setInviteOpen(false)}>
