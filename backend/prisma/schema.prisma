@@ -286,6 +286,7 @@ model Folder {
   children           Folder[]          @relation("FolderChildren")
   connectedAccount   ConnectedAccount? @relation(fields: [connectedAccountId], references: [id], onDelete: SetNull)
   files              File[]
+  uploadSessions     UploadSession[]    @relation("UploadSessionFolder")
 
   @@index([userId])
   @@index([userId, deletedAt, updatedAt])
@@ -299,17 +300,21 @@ model UploadSession {
   id                       String            @id @default(uuid()) @db.Char(36)
   userId                   String            @map("user_id") @db.Char(36)
   targetConnectedAccountId String?           @map("target_connected_account_id") @db.Char(36)
+  folderId                 String?           @map("folder_id") @db.Char(36)
   fileName                 String            @map("file_name") @db.VarChar(255)
   mimeType                 String            @map("mime_type") @db.VarChar(191)
   sizeBytes                BigInt            @map("size_bytes")
   status                   String            @db.VarChar(32)
+  googleSessionUri         String?           @map("google_session_uri") @db.Text
   errorMessage             String?           @map("error_message") @db.Text
   createdAt                DateTime          @default(now()) @map("created_at")
   completedAt              DateTime?         @map("completed_at")
   user                     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   targetConnectedAccount   ConnectedAccount? @relation(fields: [targetConnectedAccountId], references: [id], onDelete: SetNull)
+  folder                   Folder?           @relation("UploadSessionFolder", fields: [folderId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([folderId])
   @@map("upload_sessions")
 }
 

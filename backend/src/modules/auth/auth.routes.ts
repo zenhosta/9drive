@@ -74,7 +74,7 @@ authRouter.get('/google/url', async (_req, res, next) => {
     const client = createOAuthClient(config)
     const url = client.generateAuthUrl({
       access_type: 'offline',
-      prompt: 'select_account',
+      prompt: 'consent',
       include_granted_scopes: true,
       scope: config.scopes as string[],
       state,
@@ -148,7 +148,8 @@ authRouter.get('/google/callback', async (req, res) => {
     const handoffToken = randomToken()
     await prisma.authHandoff.create({ data: { userId: user.id, tokenHash: hashToken(handoffToken), expiresAt: new Date(Date.now() + 5 * 60_000) } })
     return res.redirect(`${env.FRONTEND_URL}/google-auth?token=${handoffToken}`)
-  } catch {
+  } catch (error) {
+    console.error('Google Auth callback failed:', error)
     return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
   }
 })

@@ -93,9 +93,21 @@ export function QuotaTrackerPage() {
   }, [])
 
   async function connectDrive() {
-    const data = await apiFetch<{ url: string }>('/connected-accounts/google/connect-url')
-    const popup = window.open(data.url, 'google-drive-connect', 'width=540,height=720')
-    if (!popup) window.location.href = data.url
+    const popup = window.open('', 'google-drive-connect', 'width=540,height=720')
+    if (popup) {
+      popup.document.write('<html><head><title>Connecting...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;color:#64748b;}</style></head><body><div style="text-align:center;"><h2>Connecting to Google...</h2><p>Please wait while we redirect you.</p></div></body></html>')
+    }
+    try {
+      const data = await apiFetch<{ url: string }>('/connected-accounts/google/connect-url')
+      if (popup) {
+        popup.location.href = data.url
+      } else {
+        window.location.href = data.url
+      }
+    } catch (e) {
+      if (popup) popup.close()
+      console.error('Failed to start Google Drive connection from Quota Tracker', e)
+    }
   }
 
   async function sync(accountId: string) {
@@ -138,7 +150,7 @@ export function QuotaTrackerPage() {
       <PageHeader title="Quota Tracker" description="Track and manage connected provider storage limits." actions={<><Button variant="outline" onClick={() => setAutoRefresh(!autoRefresh)}><CheckCircle className="h-4 w-4" />Auto-refresh {autoRefresh ? 'On' : 'Off'}</Button><Button variant="outline" onClick={refresh} disabled={refreshing}><RefreshCw className={refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{refreshing ? 'Refreshing...' : 'Refresh'}</Button><Button onClick={connectDrive}><Link2 className="h-4 w-4" />Connect Drive</Button></>} />
       {message ? <p className="mt-5 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
 
-      <div className="mt-8 grid gap-4 md:grid-cols-4">
+      <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <Card className="p-5"><p className="text-sm text-slate-500">Total Storage</p><p className="mt-2 text-2xl font-extrabold">{formatBytes(summary?.totalBytes)}</p></Card>
         <Card className="p-5"><p className="text-sm text-slate-500">Used Storage</p><p className="mt-2 text-2xl font-extrabold">{formatBytes(summary?.usedBytes)}</p></Card>
         <Card className="p-5"><p className="text-sm text-slate-500">Available</p><p className="mt-2 text-2xl font-extrabold">{formatBytes(summary?.availableBytes)}</p></Card>
@@ -171,7 +183,7 @@ export function QuotaTrackerPage() {
         </div>
       </Card>
 
-      <div className="mt-6 grid gap-5 xl:grid-cols-2">
+      <div className="mt-6 grid gap-5 md:grid-cols-2">
         {accounts.length === 0 ? (
           <Card className="col-span-full p-8 text-center">
             <Cloud className="mx-auto h-10 w-10 text-blue-600" />

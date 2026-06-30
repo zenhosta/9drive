@@ -5,6 +5,7 @@ export type FolderItem = {
   color: string
   iconUrl?: string | null
   parentId?: string | null
+  providerFolderId?: string | null
 }
 
 export type FileItem = {

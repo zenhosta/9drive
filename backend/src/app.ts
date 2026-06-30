@@ -13,8 +13,11 @@ import { publicRouter } from './modules/public/public.routes.js'
 import { inviteRouter } from './modules/invites/invite.routes.js'
 import { apiKeyRouter } from './modules/api-keys/api-key.routes.js'
 import { publicApiRouter } from './modules/public-api/public-api.routes.js'
+import { auditLogRouter } from './modules/audit-logs/audit-log.routes.js'
+import { systemRouter } from './modules/system/system.routes.js'
 
 export const app = express()
+app.set('trust proxy', true)
 
 app.use(cors({ origin: env.FRONTEND_URL }))
 app.use(express.json({ limit: '1mb' }))
@@ -31,4 +34,6 @@ app.use('/uploads', uploadRouter)
 app.use('/files', fileRouter)
 app.use('/folders', folderRouter)
 app.use('/invites', inviteRouter)
+app.use('/audit-logs', auditLogRouter)
+app.use('/system', systemRouter)
 app.use(errorMiddleware)

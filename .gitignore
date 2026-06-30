@@ -8,6 +8,10 @@ backend/.env
 backend/.env.local
 backend/.env.*.local
 
+# Databases
+*.db
+*.db-journal
+
 # Local env is non-secret by default, keep example in repo instead.
 frontend/.env.local
 frontend/.env.*.local

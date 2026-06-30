@@ -199,7 +199,10 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
       })
       const existingAccount = await prisma.connectedAccount.findUnique({ where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } } })
       const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
-      if (!refreshTokenEncrypted) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+      if (!refreshTokenEncrypted) {
+        console.error('Google login failed: no refresh token received and no existing account. Has refresh_token:', !!tokens.refresh_token)
+        return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+      }
       const account = await prisma.connectedAccount.upsert({
         where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } },
         create: {
@@ -272,6 +275,7 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
     await syncGoogleQuota(account.id)
     return res.redirect(`${env.FRONTEND_URL}/google-connected?status=success`)
   } catch (error) {
+    console.error('Google OAuth callback failed:', error)
     return res.redirect(`${env.FRONTEND_URL}/google-connected?status=error`)
   }
 })

@@ -11,6 +11,19 @@
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content="Google Drive storage gateway for files, folders, sharing, and quota tracking." />
     <title>9Drive Dashboard</title>
+    <script>
+      (function() {
+        const saved = localStorage.getItem('9drive:theme');
+        const theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+          document.documentElement.classList.remove('light');
+        } else {
+          document.documentElement.classList.add('light');
+          document.documentElement.classList.remove('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

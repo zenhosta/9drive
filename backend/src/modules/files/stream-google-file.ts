@@ -5,7 +5,7 @@ import { getAuthedGoogleClient } from '../google/google.service.js'
 type FileWithAccount = File & { connectedAccount: ConnectedAccount }
 type StreamOptions = { disposition?: 'inline' | 'attachment' }
 
-const googleDownloadExportMimeTypes: Record<string, { mimeType: string; extension: string }> = {
+export const googleDownloadExportMimeTypes: Record<string, { mimeType: string; extension: string }> = {
   'application/vnd.google-apps.document': { mimeType: 'application/pdf', extension: '.pdf' },
   'application/vnd.google-apps.spreadsheet': { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', extension: '.xlsx' },
   'application/vnd.google-apps.presentation': { mimeType: 'application/pdf', extension: '.pdf' },
@@ -21,14 +21,15 @@ function contentDisposition(type: 'inline' | 'attachment', fileName: string) {
   return `${type}; filename="${fileName.replaceAll('"', '')}"`
 }
 
-function withExtension(fileName: string, extension: string) {
+export function withExtension(fileName: string, extension: string) {
   return fileName.toLowerCase().endsWith(extension) ? fileName : `${fileName}${extension}`
 }
 
-function normalizeHeaders(headers: Headers | Record<string, string>) {
+export function normalizeHeaders(headers: Headers | Record<string, string>) {
   if (headers instanceof Headers) return Object.fromEntries(headers.entries())
   return headers
 }
+
 
 export async function streamGoogleFile(file: FileWithAccount, range: string | undefined, res: Response, options: StreamOptions = {}) {
   const auth = await getAuthedGoogleClient(file.connectedAccount)

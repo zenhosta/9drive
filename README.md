@@ -23,7 +23,8 @@
 - In-app API documentation with cURL and JavaScript upload examples.
 - Bottom-right upload progress panel.
 - Bearer token authentication.
-- Global Google OAuth config stored encrypted in DB.
+- Global Google OAuth config stored encrypted in DB (can be set via seed command or directly in Settings UI).
+- Automated system updates via `update.sh` directly from the Settings UI (PM2 setup).
 - Optional reCAPTCHA on email/password registration.
 - MySQL database with Prisma migrations.
 - Express + TypeScript backend.
@@ -66,13 +67,41 @@ user: root
 password: empty
 ```
 
-## 1. Clone And Install
+## 1. Quick Setup & Installation (Recommended)
 
-```bash
-git clone git@github.com:zenhosta/9drive.git
-cd 9drive
+The easiest way to set up and run the project is using the automated setup script. It automatically generates all environment files with secure keys, installs dependencies, handles Prisma migrations, and configures either **SQLite** (zero installation/config) or **MySQL**.
+
+### Windows (PowerShell)
+Make sure to open PowerShell and navigate to the project directory first. For example, if you cloned the project to `E:\AUTO KLIK\9Drive`:
+
+```powershell
+# 1. Switch to the drive where the project is located (if necessary)
+E:
+
+# 2. Navigate to the project folder
+cd "E:\AUTO KLIK\9Drive"
+
+# 3. Run the automated setup script
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
+
+1. **Database**: Choose **SQLite (Option 1)** for zero-configuration, or **MySQL (Option 2)**.
+2. **Google Credentials**: Enter Client ID/Secret or skip (press Enter) to set up later.
+
+Once setup is complete, run the entire application (both frontend and backend) in one command:
+
+```bash
+npm run dev
+```
+
+---
+
+## 2. Manual Installation (Alternative)
+
+If you prefer to configure the project manually:
+
+### 2.1 Install Dependencies
 Install backend dependencies:
 
 ```bash
@@ -87,21 +116,18 @@ cd ../frontend
 npm install
 ```
 
-## 2. Create MySQL Database
-
-Create database:
-
+### 2.2 Create Database (For MySQL)
+Create a database:
 ```sql
 CREATE DATABASE 9drive;
 ```
-
 If using MySQL CLI:
-
 ```bash
 mysql -u root -e "CREATE DATABASE IF NOT EXISTS 9drive;"
 ```
 
-## 3. Backend Environment
+### 2.3 Environment Setup
+
 
 Create `backend/.env`:
 
@@ -453,6 +479,54 @@ docker compose down -v
 - Rebuild frontend when `VITE_API_URL` changes because Vite embeds env at build time.
 - Rebuild frontend when `VITE_RECAPTCHA_SITE_KEY` changes because Vite embeds env at build time.
 
+### VPS Deployment (Step-by-Step)
+
+Follow these steps to deploy 9Drive to a VPS (such as Ubuntu/Debian) using Docker:
+
+#### 1. Install Docker & Docker Compose on your VPS
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose
+sudo systemctl enable --now docker
+```
+
+#### 2. Clone the Repository
+```bash
+git clone https://github.com/your-github-username/9drive.git
+cd 9drive
+```
+
+#### 3. Setup the Production Environment
+Copy the example environment file to `.env`:
+```bash
+cp .env.docker.example .env
+```
+Edit the `.env` file (e.g., `nano .env`) and configure the values for your production VPS domain/IP:
+* **`FRONTEND_URL`**: Set to your public domain or VPS IP (e.g., `http://103.xxx.xxx.xxx:5173` or `https://9drive.yourdomain.com`).
+* **`VITE_API_URL`**: Set to your public backend URL (e.g., `http://103.xxx.xxx.xxx:4000` or `https://api.9drive.yourdomain.com`).
+* **`GOOGLE_REDIRECT_URI`**: Set to your public redirect callback URL (e.g., `http://103.xxx.xxx.xxx:4000/connected-accounts/google/callback`).
+* Set secure credentials for **`JWT_ACCESS_SECRET`** and **`TOKEN_ENCRYPTION_KEY`** (encryption key must be exactly 32 characters/bytes).
+* Add your **`GOOGLE_CLIENT_ID`** and **`GOOGLE_CLIENT_SECRET`**.
+
+#### 4. Deploy the Containers
+Run Docker Compose to build and start the database, backend, and frontend containers in the background:
+```bash
+docker compose up -d --build
+```
+
+#### 5. Seed the Google Configuration
+Initialize the encrypted Google configuration in the database:
+```bash
+docker compose exec backend npm run seed:google-config
+```
+
+#### 6. Add Authorized URIs in Google Cloud Console
+1. Go to **APIs & Services** -> **Credentials** in the Google Cloud Console.
+2. Edit your OAuth 2.0 Web Client.
+3. In **Authorized JavaScript origins**, add your frontend URL (e.g., `http://your-vps-ip:5173` or `https://9drive.yourdomain.com`).
+4. In **Authorized redirect URIs**, add your redirect URI (e.g., `http://your-vps-ip:4000/connected-accounts/google/callback` or `https://api.9drive.yourdomain.com/connected-accounts/google/callback`).
+5. Save changes.
+
 ### Non-Docker Production Startup
 
 Run production migrations before starting the backend:
@@ -596,6 +670,43 @@ file
 - Use strong secrets.
 - Put the backend behind HTTPS.
 - Consider secure cookies or stronger token storage for production.
+
+## Google OAuth Configuration via UI
+
+Instead of seeding Google credentials manually using `npm run seed:google-config`, you can set them up directly from the frontend dashboard:
+1. Log in to the dashboard.
+2. Go to **Settings** -> **Google Credentials**.
+3. Input your **Google Client ID**, **Google Client Secret**, and **Redirect URI** (e.g. `https://103.65.237.136.nip.io:4000/connected-accounts/google/callback`).
+4. Click **Save Configuration**.
+
+The config is automatically encrypted and saved into the database, enabling Google sign-in and Google Drive connections instantly.
+
+## Automated Updates & PM2 Management
+
+For native VPS setups running with PM2, 9Drive includes a fully automated system update trigger and log monitor in the **Settings** UI.
+
+### How it works
+1. When you trigger an update from the frontend dashboard, the backend triggers the `update.sh` script in the background.
+2. The script:
+   - Resets any local Git conflicts (`git reset --hard`) and pulls the latest changes.
+   - Installs dependencies and builds both backend and frontend.
+   - Deploys Prisma database migrations.
+   - Restarts the backend process using PM2 (`pm2 restart 9drive-backend`).
+3. You can monitor the real-time rebuild progress using the log viewer inside the Settings UI.
+
+### Manual update command
+If you want to update manually via the terminal, run:
+```bash
+./update.sh
+```
+Or run the commands individually:
+```bash
+git reset --hard
+git pull origin main
+cd backend && npm install && npx prisma generate && npm run build && npx prisma migrate deploy
+cd ../frontend && npm install && npm run build
+pm2 restart 9drive-backend
+```
 
 ## Build
 

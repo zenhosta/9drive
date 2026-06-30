@@ -1,13 +1,97 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root, :root.light {
+  --bg-gradient:
+    radial-gradient(at 0% 0%, rgba(224, 231, 255, 0.45) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, rgba(245, 243, 255, 0.5) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(254, 244, 244, 0.45) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(240, 253, 250, 0.3) 0px, transparent 50%),
+    #fafcfd;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-bold: #0f172a;
+  --card-bg: rgba(255, 255, 255, 0.45);
+  --card-border: rgba(255, 255, 255, 0.6);
+  --sidebar-bg: rgba(255, 255, 255, 0.4);
+  --sidebar-border: rgba(255, 255, 255, 0.5);
+  --input-bg: rgba(255, 255, 255, 0.5);
+  --input-border: rgba(255, 255, 255, 0.6);
+  --input-focus-bg: rgba(255, 255, 255, 0.85);
+  --shadow-color: rgba(0, 0, 0, 0.02);
+  --shadow-hover: rgba(0, 0, 0, 0.04);
+  --active-nav-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%);
+  --active-nav-text: #1d4ed8;
+  --active-nav-border: #3b82f6;
+  --button-shadow: rgba(59, 130, 246, 0.25);
+  --button-hover-shadow: rgba(59, 130, 246, 0.35);
+  --outline-btn-bg: rgba(255, 255, 255, 0.02);
+  --outline-btn-border: rgba(255, 255, 255, 0.2);
+
+  /* Overrides for Tailwind Slate Utilities */
+  --slate-50-override: #f8fafc;
+  --slate-100-override: #f1f5f9;
+  --slate-200-override: #e2e8f0;
+
+  /* Overrides for Alerts/Status messages */
+  --blue-bg-override: #eff6ff;
+  --blue-text-override: #1e40af;
+  --emerald-bg-override: #ecfdf5;
+  --emerald-text-override: #065f46;
+  --red-bg-override: #fef2f2;
+  --red-text-override: #991b1b;
+}
+
+:root.dark {
+  --bg-gradient:
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.18) 0px, transparent 55%),
+    radial-gradient(at 100% 0%, rgba(244, 63, 94, 0.12) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 55%),
+    #090d16;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-bold: #f8fafc;
+  --card-bg: rgba(18, 24, 43, 0.55);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --sidebar-bg: rgba(10, 15, 28, 0.65);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.04);
+  --input-border: rgba(255, 255, 255, 0.08);
+  --input-focus-bg: rgba(255, 255, 255, 0.08);
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --shadow-hover: rgba(0, 0, 0, 0.4);
+  --active-nav-bg: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(244, 63, 94, 0.05) 100%);
+  --active-nav-text: #f8fafc;
+  --active-nav-border: #6366f1;
+  --button-shadow: rgba(99, 102, 241, 0.35);
+  --button-hover-shadow: rgba(99, 102, 241, 0.5);
+  --outline-btn-bg: rgba(255, 255, 255, 0.02);
+  --outline-btn-border: rgba(255, 255, 255, 0.1);
+
+  /* Overrides for Tailwind Slate Utilities in Dark Mode */
+  --slate-50-override: rgba(255, 255, 255, 0.03);
+  --slate-100-override: rgba(255, 255, 255, 0.08);
+  --slate-200-override: rgba(255, 255, 255, 0.15);
+
+  /* Overrides for Alerts/Status messages in Dark Mode */
+  --blue-bg-override: rgba(59, 130, 246, 0.15);
+  --blue-text-override: #93c5fd;
+  --emerald-bg-override: rgba(16, 185, 129, 0.15);
+  --emerald-text-override: #6ee7b7;
+  --red-bg-override: rgba(239, 68, 68, 0.15);
+  --red-text-override: #fca5a5;
+}
+
 :root {
   font-family: Manrope, ui-sans-serif, system-ui, sans-serif;
-  color: #0f172a;
-  background: #f8fafc;
+  color: var(--text-primary);
+  background: var(--bg-gradient);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background 0.5s ease, color 0.5s ease;
 }
 
 * {
@@ -17,6 +101,8 @@
 body {
   margin: 0;
   min-width: 320px;
+  background: transparent !important;
+  color: var(--text-primary) !important;
 }
 
 button,
@@ -24,6 +110,218 @@ input {
   font: inherit;
 }
 
+/* Force layout transparency to let background gradients shine through */
+main,
+main.bg-white,
+main div.bg-white,
+main section.bg-white,
+section.min-w-0 {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Override solid bg-white on containers to keep glass effect */
+div.bg-white:not(button),
+section.bg-white:not(button) {
+  background-color: transparent !important;
+}
+
+/* Map Tailwind Slate background utilities to theme variables */
+.bg-slate-50 {
+  background-color: var(--slate-50-override) !important;
+}
+.bg-slate-100 {
+  background-color: var(--slate-100-override) !important;
+}
+.bg-slate-200 {
+  background-color: var(--slate-200-override) !important;
+}
+
+/* Map Tailwind Alert background and text utilities to theme variables */
+.bg-blue-50 {
+  background-color: var(--blue-bg-override) !important;
+}
+.text-blue-700 {
+  color: var(--blue-text-override) !important;
+}
+.bg-emerald-50 {
+  background-color: var(--emerald-bg-override) !important;
+}
+.text-emerald-700 {
+  color: var(--emerald-text-override) !important;
+}
+.bg-red-50 {
+  background-color: var(--red-bg-override) !important;
+}
+.text-red-700 {
+  color: var(--red-text-override) !important;
+}
+
+/* Hover effects for background classes */
+.hover\:bg-slate-100:hover {
+  background-color: var(--slate-100-override) !important;
+  opacity: 0.9;
+}
+.hover\:bg-slate-200:hover {
+  background-color: var(--slate-200-override) !important;
+  opacity: 0.95;
+}
+
+/* Base Text Color Overrides */
+p, span, h1, h2, h3, h4, h5, h6, label, div, td, th {
+  color: var(--text-primary);
+  transition: color 0.3s ease;
+}
+
+/* Subtitles / Secondary Text */
+.text-slate-500,
+.text-slate-600,
+.text-slate-400 {
+  color: var(--text-secondary) !important;
+  transition: color 0.3s ease;
+}
+
+/* Bold / Primary Text */
+.text-slate-950,
+.text-slate-900,
+.font-extrabold {
+  color: var(--text-bold) !important;
+  transition: color 0.3s ease;
+}
+
+/* Futuristic Glass Sidebar */
+aside {
+  background: var(--sidebar-bg) !important;
+  backdrop-filter: blur(25px) saturate(180%);
+  -webkit-backdrop-filter: blur(25px) saturate(180%);
+  border-right: 1px solid var(--sidebar-border) !important;
+  box-shadow: 4px 0 30px var(--shadow-color) !important;
+  transition: background 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+}
+
+/* Profile divider inside sidebar */
+.border-y.border-slate-200 {
+  border-color: var(--sidebar-border) !important;
+  transition: border-color 0.3s ease;
+}
+
+/* Glass Cards and Info Panels */
+.rounded-xl.border-slate-200,
+.rounded-2xl.border-slate-200,
+div.border.border-slate-200,
+.card {
+  background: var(--card-bg) !important;
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+  border: 1px solid var(--card-border) !important;
+  box-shadow:
+    0 10px 30px var(--shadow-color),
+    0 1px 3px rgba(0, 0, 0, 0.05) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rounded-xl.border-slate-200:hover,
+.rounded-2xl.border-slate-200:hover {
+  background: var(--card-bg) !important;
+  filter: brightness(1.05);
+  border-color: var(--outline-btn-border) !important;
+  box-shadow:
+    0 15px 35px var(--shadow-hover),
+    0 1px 10px rgba(0, 0, 0, 0.08) !important;
+  transform: translateY(-2px);
+}
+
+/* Inputs and Select Boxes */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  background: var(--input-bg) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--input-border) !important;
+  color: var(--text-primary) !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+  transition: all 0.3s ease !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+  background: var(--input-focus-bg) !important;
+  border-color: var(--active-nav-border) !important;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15) !important;
+  outline: none;
+}
+
+/* File/Folder Selection Highlight */
+.file-selected {
+  background: rgba(249, 115, 22, 0.08) !important;
+  border-color: rgba(249, 115, 22, 0.2) !important;
+}
+
+/* Option tags inside select */
+select option {
+  background-color: var(--sidebar-bg) !important;
+  color: var(--text-primary);
+}
+
+/* Sidebar navigation links */
+nav a, aside a {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--text-secondary) !important;
+}
+
+nav a.active, aside a.active {
+  background: var(--active-nav-bg) !important;
+  border-left: 4px solid var(--active-nav-border) !important;
+  padding-left: calc(1rem - 4px) !important;
+  color: var(--active-nav-text) !important;
+  font-weight: 700 !important;
+  box-shadow: inset 2px 0 10px rgba(99, 102, 241, 0.02);
+}
+
+nav a:not(.active):hover, aside a:not(.active):hover {
+  background: var(--slate-100-override) !important;
+  color: var(--text-primary) !important;
+  transform: translateX(3px);
+}
+
+/* Glowing Modern Buttons */
+button.bg-blue-600,
+.bg-blue-600 {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+  border: none !important;
+  color: white !important;
+  box-shadow: 0 4px 20px var(--button-shadow) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+button.bg-blue-600:hover,
+.bg-blue-600:hover {
+  background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%) !important;
+  box-shadow: 0 6px 25px var(--button-hover-shadow) !important;
+  transform: translateY(-1px);
+}
+
+button.bg-blue-600:active,
+.bg-blue-600:active {
+  transform: translateY(1px);
+}
+
+/* Secondary outline buttons */
+button.border-slate-200:not([style*="background-color"]),
+.border-slate-200:not([style*="background-color"]) {
+  border-color: var(--outline-btn-border) !important;
+  background: var(--outline-btn-bg) !important;
+  color: var(--text-primary) !important;
+  transition: all 0.3s ease;
+}
+
+
+button.border-slate-200:not([style*="background-color"]):hover,
+.border-slate-200:not([style*="background-color"]):hover {
+  background: var(--slate-100-override) !important;
+  border-color: var(--outline-btn-border) !important;
+}
+
+
+/* Video Shell elements */
 .shared-video-shell {
   align-items: center;
   background: #000;
@@ -62,4 +360,53 @@ input {
 
 .drive-preview-video-shell video {
   object-fit: contain;
+}
+
+/* Sidebar Storage Card Redesign */
+aside .card {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--card-border) !important;
+  box-shadow: 0 4px 20px var(--shadow-color) !important;
+  padding: 1.25rem !important;
+}
+
+/* Status Indicator Dots */
+aside .card span.flex.items-center span.rounded {
+  border-radius: 9999px !important;
+  box-shadow: 0 0 10px currentColor !important;
+  transform: scale(0.95);
+}
+
+/* Glowing Gradient Progress Bar */
+aside .card .bg-slate-100 {
+  background-color: var(--slate-100-override) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+aside .card .bg-slate-100 > .bg-blue-600 {
+  background: linear-gradient(90deg, #6366f1 0%, #3b82f6 100%) !important;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.6) !important;
+  border-radius: 9999px !important;
+}
+
+/* Log Out Button Contrast Override */
+aside .card button.text-orange-600 {
+  color: #ff6b6b !important;
+  background: rgba(239, 68, 68, 0.06) !important;
+  border: 1px solid rgba(239, 68, 68, 0.15) !important;
+  width: 100% !important;
+  transition: all 0.2s ease-in-out !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 0.5rem !important;
+  font-weight: 600 !important;
+}
+
+aside .card button.text-orange-600:hover {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  color: #ff8787 !important;
+  transform: translateY(-1px);
 }
