@@ -1,6 +1,7 @@
 import Busboy from 'busboy'
 import type { NextFunction, Response } from 'express'
 import { Router } from 'express'
+import { Readable } from 'stream'
 import { google } from 'googleapis'
 import { env } from '../../config/env.js'
 import { prisma } from '../../config/prisma.js'
@@ -153,10 +154,16 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
 
         const session = await prisma.uploadSession.create({ data: { userId: req.user!.id, targetConnectedAccountId: account.id, fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' } })
         logUpload('file upload started', { sessionId: session.id, accountId: account.id, fileName, sizeBytes: meta.sizeBytes.toString() })
-        let streamedBytes = 0n
+        const chunks: Buffer[] = []
         fileStream.on('data', (chunk: Buffer) => {
-          streamedBytes += BigInt(chunk.length)
+          chunks.push(chunk)
         })
+        await new Promise<void>((resolve, reject) => {
+          fileStream.on('end', resolve)
+          fileStream.on('error', reject)
+        })
+        const fileBuffer = Buffer.concat(chunks)
+        const streamedBytes = BigInt(fileBuffer.length)
 
         let providerFileId = ''
         let s3FileId: string | null = null
@@ -179,7 +186,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           const appFolderId = await ensureGoogleAppFolder(account)
           const uploaded = await drive.files.create({
             requestBody: { name: fileName, parents: [appFolderId] },
-            media: { mimeType: meta.mimeType, body: fileStream },
+            media: { mimeType: meta.mimeType, body: Readable.from(fileBuffer) },
             fields: 'id,name,mimeType,size',
           })
           providerFileId = uploaded.data.id ?? ''
