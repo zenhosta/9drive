@@ -1,10 +1,31 @@
 services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-9drive}
+      MYSQL_USER: ${MYSQL_USER:-9drive}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-9drivepassword}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 20s
+      retries: 10
+
   backend:
     build:
       context: ./backend
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      DATABASE_URL: file:/app/prisma/dev.db
+      DATABASE_URL: ${DATABASE_URL:-mysql://9drive:9drivepassword@db:3306/9drive}
       APP_PORT: 4000
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-this-jwt-secret-at-least-32-chars}
@@ -16,9 +37,7 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:4000/connected-accounts/google/callback}
     ports:
-      - "4001:4000"
-    volumes:
-      - sqlite_data:/app/prisma
+      - "4000:4000"
 
   frontend:
     build:
@@ -30,7 +49,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "5174:80"
+      - "5173:80"
 
 volumes:
-  sqlite_data:
+  mysql_data:

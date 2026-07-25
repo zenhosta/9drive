@@ -147,8 +147,16 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
     const uploadOne = async (fieldName: string, fileStream: NodeJS.ReadableStream, info: { filename: string; mimeType: string }) => {
       const meta = metaForFile(fieldName, info)
       const fileName = meta?.fileName || info.filename
-      try {
+
+      const chunks: Buffer[] = []
+      const streamDonePromise = new Promise<void>((resolve, reject) => {
+        fileStream.on('data', (chunk: Buffer) => chunks.push(chunk))
+        fileStream.on('end', resolve)
+        fileStream.on('error', reject)
         fileStream.on('limit', () => logUpload('file stream size limit reached', { fileName }))
+      })
+
+      try {
         if (!meta?.sizeBytes || meta.sizeBytes <= 0n) {
           fileStream.resume()
           failed.push({ fileName, code: 'UPLOAD_SIZE_REQUIRED', message: 'sizeBytes field must be sent before file field.' })
@@ -179,14 +187,8 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
 
         const session = await prisma.uploadSession.create({ data: { userId: req.user!.id, targetConnectedAccountId: account.id, folderId, fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' } })
         logUpload('file upload started', { sessionId: session.id, accountId: account.id, fileName, sizeBytes: meta.sizeBytes.toString() })
-        const chunks: Buffer[] = []
-        fileStream.on('data', (chunk: Buffer) => {
-          chunks.push(chunk)
-        })
-        await new Promise<void>((resolve, reject) => {
-          fileStream.on('end', resolve)
-          fileStream.on('error', reject)
-        })
+
+        await streamDonePromise
         const fileBuffer = Buffer.concat(chunks)
         const streamedBytes = BigInt(fileBuffer.length)
 

@@ -85,6 +85,13 @@ cd "E:\AUTO KLIK\9Drive"
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
+### Linux / macOS (Bash)
+```bash
+# Run the Linux automated setup script
+chmod +x ./setup.sh
+./setup.sh
+```
+
 
 1. **Database**: Choose **SQLite (Option 1)** for zero-configuration, or **MySQL (Option 2)**.
 2. **Google Credentials**: Enter Client ID/Secret or skip (press Enter) to set up later.
