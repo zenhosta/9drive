@@ -30,6 +30,7 @@ model User {
   workspaceInvitesSent WorkspaceInvite[] @relation("WorkspaceInvitesSent")
   uploadRoutingPolicy UploadRoutingPolicy?
   apiKeys       ApiKey[]
+  encryptionEnabled Boolean @default(false) @map("encryption_enabled")
 
   @@map("users")
 }
@@ -215,6 +216,13 @@ model File {
   sizeBytes          BigInt           @map("size_bytes")
   checksum           String?          @db.VarChar(191)
   status             String           @default("active") @db.VarChar(32)
+  isEncrypted        Boolean          @default(false) @map("is_encrypted")
+  encryptionVersion  Int?             @map("encryption_version")
+  encryptedDEK       String?          @map("encrypted_dek") @db.Text
+  dekIV              String?          @map("dek_iv") @db.VarChar(32)
+  dekAuthTag         String?          @map("dek_auth_tag") @db.VarChar(32)
+  fileNonce          String?          @map("file_nonce") @db.VarChar(32)
+  plaintextSize      BigInt?          @map("plaintext_size")
   createdAt          DateTime         @default(now()) @map("created_at")
   updatedAt          DateTime         @updatedAt @map("updated_at")
   deletedAt          DateTime?        @map("deleted_at")

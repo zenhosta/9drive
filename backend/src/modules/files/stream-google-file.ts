@@ -78,3 +78,26 @@ export async function streamGoogleFile(file: FileWithAccount, range: string | un
   }
   return pump()
 }
+
+/** Fetch raw bytes from Google Drive — used by encrypted file handler */
+export async function fetchGoogleFileStream(
+  file: FileWithAccount,
+  range?: string
+): Promise<{ stream: ReadableStream; status: number; contentLength?: string; contentRange?: string }> {
+  const auth = await getAuthedGoogleClient(file.connectedAccount)
+  const headers = normalizeHeaders(await auth.getRequestHeaders())
+  const url = `https://www.googleapis.com/drive/v3/files/${file.providerFileId}?alt=media`
+  const response = await fetch(url, {
+    headers: {
+      ...headers,
+      ...(range ? { Range: range } : {}),
+    },
+  })
+  if (!response.ok || !response.body) throw new Error(`Google Drive fetch failed: ${response.status}`)
+  return {
+    stream: response.body,
+    status: response.status,
+    contentLength: response.headers.get('content-length') ?? undefined,
+    contentRange: response.headers.get('content-range') ?? undefined,
+  }
+}

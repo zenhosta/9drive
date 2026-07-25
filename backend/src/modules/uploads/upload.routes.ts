@@ -10,6 +10,7 @@ import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.
 import { ensureGoogleAppFolder, getAuthedGoogleClient, syncGoogleQuota } from '../google/google.service.js'
 import { buildS3ObjectKey, getS3ConfigForAccount, syncS3Quota, uploadS3Object } from '../s3/s3.service.js'
 import { createAuditLog } from '../../utils/audit.js'
+import { generateFileDEK, encryptDEK, deriveEncryptionMasterKey, ChunkedEncryptTransform } from '../../utils/file-crypto.js'
 
 export const uploadRouter = Router()
 
@@ -189,6 +190,27 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         const fileBuffer = Buffer.concat(chunks)
         const streamedBytes = BigInt(fileBuffer.length)
 
+        // Encrypt file if encryption is enabled
+        let uploadBuffer = fileBuffer
+        let encryptionMeta: { encryptedDEK: string; dekIV: string; dekAuthTag: string; fileNonce: string; plaintextSize: bigint } | null = null
+        if (env.FILE_ENCRYPTION_ENABLED) {
+          const masterKey = deriveEncryptionMasterKey(env.TOKEN_ENCRYPTION_KEY)
+          const dek = generateFileDEK()
+          const wrapped = encryptDEK(dek, masterKey)
+          const encryptor = new ChunkedEncryptTransform(dek)
+          const encChunks: Buffer[] = []
+          encryptor.on('data', (chunk: Buffer) => encChunks.push(chunk))
+          encryptor.write(fileBuffer)
+          encryptor.end()
+          await new Promise<void>((resolve) => encryptor.on('end', resolve))
+          uploadBuffer = Buffer.concat(encChunks)
+          encryptionMeta = {
+            ...wrapped,
+            fileNonce: encryptor.getFileNonce().toString('base64'),
+            plaintextSize: BigInt(fileBuffer.length),
+          }
+        }
+
         let providerFileId = ''
         let s3FileId: string | null = null
         let uploadedName = fileName
@@ -196,11 +218,11 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         if (account.provider === 's3') {
           const config = await getS3ConfigForAccount(account.id, req.user!.id)
           const provisionalFile = await prisma.file.create({
-            data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 's3', providerFileId: 'pending', name: fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' },
+            data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 's3', providerFileId: 'pending', name: fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading', ...(encryptionMeta ? { isEncrypted: true, encryptionVersion: 1, encryptedDEK: encryptionMeta.encryptedDEK, dekIV: encryptionMeta.dekIV, dekAuthTag: encryptionMeta.dekAuthTag, fileNonce: encryptionMeta.fileNonce, plaintextSize: encryptionMeta.plaintextSize } : {}) },
           })
           s3FileId = provisionalFile.id
           providerFileId = buildS3ObjectKey(config, req.user!.id, provisionalFile.id, fileName)
-          await uploadS3Object(config, providerFileId, Readable.from(fileBuffer), meta.mimeType)
+          await uploadS3Object(config, providerFileId, Readable.from(uploadBuffer), encryptionMeta ? 'application/octet-stream' : meta.mimeType)
           await prisma.file.update({ where: { id: provisionalFile.id }, data: { providerFileId, status: 'active' } })
           completed.push({ ...provisionalFile, providerFileId, status: 'active', sizeBytes: provisionalFile.sizeBytes.toString() })
           logUpload('s3 upload completed', { sessionId: session.id, accountId: account.id, fileName })
@@ -217,7 +239,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           }
           const uploaded = await drive.files.create({
             requestBody: { name: fileName, parents: [targetParentId] },
-            media: { mimeType: meta.mimeType, body: Readable.from(fileBuffer) },
+            media: { mimeType: encryptionMeta ? 'application/octet-stream' : meta.mimeType, body: Readable.from(uploadBuffer) },
             fields: 'id,name,mimeType,size',
           })
           providerFileId = uploaded.data.id ?? ''
@@ -247,7 +269,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           return
         }
 
-        const file = account.provider === 's3' ? null : await prisma.file.create({ data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 'google_drive', providerFileId, name: uploadedName, mimeType: uploadedMimeType, sizeBytes: meta.sizeBytes } })
+        const file = account.provider === 's3' ? null : await prisma.file.create({ data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 'google_drive', providerFileId, name: uploadedName, mimeType: uploadedMimeType, sizeBytes: meta.sizeBytes, ...(encryptionMeta ? { isEncrypted: true, encryptionVersion: 1, encryptedDEK: encryptionMeta.encryptedDEK, dekIV: encryptionMeta.dekIV, dekAuthTag: encryptionMeta.dekAuthTag, fileNonce: encryptionMeta.fileNonce, plaintextSize: encryptionMeta.plaintextSize } : {}) } })
         if (file) {
           logUpload('database file created', { sessionId: session.id, fileId: file.id, accountId: account.id })
           completed.push({ ...file, sizeBytes: file.sizeBytes.toString() })
