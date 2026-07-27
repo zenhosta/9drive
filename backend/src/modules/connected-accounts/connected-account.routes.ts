@@ -8,6 +8,7 @@ import { decryptText, encryptText, hashToken, randomToken } from '../../utils/cr
 import { hashPassword } from '../../utils/password.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
 import { syncS3Quota, testS3Connection } from '../s3/s3.service.js'
+import { getFrontendUrl } from '../../utils/url.js'
 
 export const connectedAccountRouter = Router()
 
@@ -201,7 +202,7 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
       const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
       if (!refreshTokenEncrypted) {
         console.error('Google login failed: no refresh token received and no existing account. Has refresh_token:', !!tokens.refresh_token)
-        return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+        return res.redirect(`${getFrontendUrl()}/google-auth?status=error`)
       }
       const account = await prisma.connectedAccount.upsert({
         where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } },
@@ -235,7 +236,7 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
       await syncGoogleQuota(account.id).catch(() => undefined)
       const handoffToken = randomToken()
       await prisma.authHandoff.create({ data: { userId: user.id, tokenHash: hashToken(handoffToken), expiresAt: new Date(Date.now() + 5 * 60_000) } })
-      return res.redirect(`${env.FRONTEND_URL}/google-auth?token=${handoffToken}`)
+      return res.redirect(`${getFrontendUrl()}/google-auth?token=${handoffToken}`)
     }
 
     if (oauthState.flow !== 'connect' || !oauthState.userId) return res.status(400).json({ code: 'GOOGLE_OAUTH_STATE_INVALID', message: 'OAuth state expired.' })
@@ -273,10 +274,10 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
     })
     await prisma.oauthState.update({ where: { id: oauthState.id }, data: { usedAt: new Date() } })
     await syncGoogleQuota(account.id)
-    return res.redirect(`${env.FRONTEND_URL}/google-connected?status=success`)
+    return res.redirect(`${getFrontendUrl()}/google-connected?status=success`)
   } catch (error) {
     console.error('Google OAuth callback failed:', error)
-    return res.redirect(`${env.FRONTEND_URL}/google-connected?status=error`)
+    return res.redirect(`${getFrontendUrl()}/google-connected?status=error`)
   }
 })
 

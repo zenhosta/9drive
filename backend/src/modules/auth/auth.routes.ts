@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword } from '../../utils/password.js'
 import { encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { signAccessToken } from '../../utils/jwt.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
+import { getFrontendUrl } from '../../utils/url.js'
 
 export const authRouter = Router()
 
@@ -89,19 +90,19 @@ authRouter.get('/google/callback', async (req, res) => {
   try {
     const query = z.object({ code: z.string(), state: z.string() }).parse(req.query)
     const oauthState = await prisma.oauthState.findUniqueOrThrow({ where: { stateHash: hashToken(query.state) }, include: { providerConfig: true } })
-    if (oauthState.flow !== 'login' || oauthState.usedAt || oauthState.expiresAt < new Date()) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    if (oauthState.flow !== 'login' || oauthState.usedAt || oauthState.expiresAt < new Date()) return res.redirect(`${getFrontendUrl()}/google-auth?status=error`)
 
     const client = createOAuthClient(oauthState.providerConfig)
     const tokenResult = await client.getToken(query.code)
     const tokens = tokenResult.tokens
-    if (!tokens.access_token) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    if (!tokens.access_token) return res.redirect(`${getFrontendUrl()}/google-auth?status=error`)
     client.setCredentials(tokens)
 
     const oauth2 = google.oauth2({ version: 'v2', auth: client })
     const profile = await oauth2.userinfo.get()
     const providerAccountId = profile.data.id
     const email = profile.data.email
-    if (!providerAccountId || !email) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    if (!providerAccountId || !email) return res.redirect(`${getFrontendUrl()}/google-auth?status=error`)
 
     const name = profile.data.name || email.split('@')[0] || 'Google User'
     const user = await prisma.user.upsert({
@@ -111,7 +112,7 @@ authRouter.get('/google/callback', async (req, res) => {
     })
     const existingAccount = await prisma.connectedAccount.findUnique({ where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } } })
     const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
-    if (!refreshTokenEncrypted) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    if (!refreshTokenEncrypted) return res.redirect(`${getFrontendUrl()}/google-auth?status=error`)
 
     const account = await prisma.connectedAccount.upsert({
       where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } },
@@ -147,10 +148,10 @@ authRouter.get('/google/callback', async (req, res) => {
 
     const handoffToken = randomToken()
     await prisma.authHandoff.create({ data: { userId: user.id, tokenHash: hashToken(handoffToken), expiresAt: new Date(Date.now() + 5 * 60_000) } })
-    return res.redirect(`${env.FRONTEND_URL}/google-auth?token=${handoffToken}`)
+    return res.redirect(`${getFrontendUrl()}/google-auth?token=${handoffToken}`)
   } catch (error) {
     console.error('Google Auth callback failed:', error)
-    return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    return res.redirect(`${getFrontendUrl()}/google-auth?status=error`)
   }
 })
 
