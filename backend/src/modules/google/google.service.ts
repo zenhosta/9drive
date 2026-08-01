@@ -162,6 +162,19 @@ export async function syncGoogleAppFolderFiles(accountId: string, userId: string
       continue
     }
 
+    if (existing.isEncrypted) {
+      // For encrypted files, preserve original logical mimeType, sizeBytes, and DEK metadata (Blocker 5)
+      const needsUpdate = existing.name !== driveFile.name || existing.status !== 'active' || existing.deletedAt !== null || existing.folderId !== dbFolderId
+      if (needsUpdate) {
+        await prisma.file.update({
+          where: { id: existing.id },
+          data: { name: driveFile.name, status: 'active', deletedAt: null, folderId: dbFolderId },
+        })
+        updated += 1
+      }
+      continue
+    }
+
     const needsUpdate = existing.name !== driveFile.name || existing.mimeType !== driveFile.mimeType || existing.sizeBytes !== driveFile.sizeBytes || existing.status !== 'active' || existing.deletedAt !== null || existing.folderId !== dbFolderId
     if (needsUpdate) {
       await prisma.file.update({

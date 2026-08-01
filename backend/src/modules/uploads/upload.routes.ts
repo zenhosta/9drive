@@ -10,6 +10,7 @@ import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.
 import { ensureGoogleAppFolder, getAuthedGoogleClient, syncGoogleQuota } from '../google/google.service.js'
 import { buildS3ObjectKey, getS3ConfigForAccount, syncS3Quota, uploadS3Object } from '../s3/s3.service.js'
 import { createAuditLog } from '../../utils/audit.js'
+import { generateFileDEK, encryptDEK, decryptDEK, deriveEncryptionMasterKey, ChunkedEncryptTransform, encryptedFileSize } from '../../utils/file-crypto.js'
 
 export const uploadRouter = Router()
 
@@ -176,31 +177,49 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         }
         reservedBytesByAccount.set(account.id, (reservedBytesByAccount.get(account.id) ?? 0n) + meta.sizeBytes)
 
-        const session = await prisma.uploadSession.create({ data: { userId: req.user!.id, targetConnectedAccountId: account.id, folderId, fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' } })
-        logUpload('file upload started', { sessionId: session.id, accountId: account.id, fileName, sizeBytes: meta.sizeBytes.toString() })
-        const chunks: Buffer[] = []
-        fileStream.on('data', (chunk: Buffer) => {
-          chunks.push(chunk)
-        })
-        await new Promise<void>((resolve, reject) => {
-          fileStream.on('end', resolve)
-          fileStream.on('error', reject)
-        })
-        const fileBuffer = Buffer.concat(chunks)
-        const streamedBytes = BigInt(fileBuffer.length)
+        const isEncrypted = Boolean(env.FILE_ENCRYPTION_ENABLED)
+        let encryptionMeta: { encryptedDEK: string; dekIV: string; dekAuthTag: string; fileNonce: string } | null = null
+        let uploadStream: Readable = fileStream as Readable
+
+        if (isEncrypted) {
+          const masterKey = deriveEncryptionMasterKey(env.TOKEN_ENCRYPTION_KEY)
+          const dek = generateFileDEK()
+          const wrapped = encryptDEK(dek, masterKey)
+          const encryptor = new ChunkedEncryptTransform(dek)
+          encryptionMeta = {
+            ...wrapped,
+            fileNonce: encryptor.getFileNonce().toString('base64'),
+          }
+          uploadStream = (fileStream as Readable).pipe(encryptor)
+        }
+
+        const session = await prisma.uploadSession.create({ data: { userId: req.user!.id, targetConnectedAccountId: account.id, folderId, fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading', isEncrypted } })
+        logUpload('file upload started', { sessionId: session.id, accountId: account.id, fileName, sizeBytes: meta.sizeBytes.toString(), isEncrypted })
 
         let providerFileId = ''
         let s3FileId: string | null = null
         let uploadedName = fileName
-        let uploadedMimeType = meta.mimeType
+        const providerMimeType = isEncrypted ? 'application/octet-stream' : meta.mimeType
+
         if (account.provider === 's3') {
           const config = await getS3ConfigForAccount(account.id, req.user!.id)
           const provisionalFile = await prisma.file.create({
-            data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 's3', providerFileId: 'pending', name: fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' },
+            data: {
+              userId: req.user!.id,
+              connectedAccountId: account.id,
+              folderId,
+              provider: 's3',
+              providerFileId: 'pending',
+              name: fileName,
+              mimeType: meta.mimeType,
+              sizeBytes: meta.sizeBytes,
+              status: 'uploading',
+              ...(encryptionMeta ? { isEncrypted: true, encryptionVersion: 1, encryptedDEK: encryptionMeta.encryptedDEK, dekIV: encryptionMeta.dekIV, dekAuthTag: encryptionMeta.dekAuthTag, fileNonce: encryptionMeta.fileNonce, plaintextSize: meta.sizeBytes } : {}),
+            },
           })
           s3FileId = provisionalFile.id
           providerFileId = buildS3ObjectKey(config, req.user!.id, provisionalFile.id, fileName)
-          await uploadS3Object(config, providerFileId, Readable.from(fileBuffer), meta.mimeType)
+          await uploadS3Object(config, providerFileId, uploadStream, providerMimeType)
           await prisma.file.update({ where: { id: provisionalFile.id }, data: { providerFileId, status: 'active' } })
           completed.push({ ...provisionalFile, providerFileId, status: 'active', sizeBytes: provisionalFile.sizeBytes.toString() })
           logUpload('s3 upload completed', { sessionId: session.id, accountId: account.id, fileName })
@@ -217,15 +236,13 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           }
           const uploaded = await drive.files.create({
             requestBody: { name: fileName, parents: [targetParentId] },
-            media: { mimeType: meta.mimeType, body: Readable.from(fileBuffer) },
+            media: { mimeType: providerMimeType, body: uploadStream },
             fields: 'id,name,mimeType,size',
           })
           providerFileId = uploaded.data.id ?? ''
           uploadedName = uploaded.data.name ?? fileName
-          uploadedMimeType = uploaded.data.mimeType ?? meta.mimeType
           logUpload('google upload completed', { sessionId: session.id, accountId: account.id, fileName })
 
-          // Make the file public (anyone with link can edit/download)
           try {
             await drive.permissions.create({
               fileId: providerFileId,
@@ -240,14 +257,19 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           }
         }
 
-        if (streamedBytes !== meta.sizeBytes) {
-          if (s3FileId) await prisma.file.update({ where: { id: s3FileId }, data: { status: 'deleted', deletedAt: new Date() } }).catch(() => undefined)
-          await prisma.uploadSession.update({ where: { id: session.id }, data: { status: 'failed', errorMessage: 'Streamed byte count did not match declared size.' } })
-          failed.push({ fileName, code: 'UPLOAD_SIZE_MISMATCH', message: 'Streamed byte count did not match declared size.' })
-          return
-        }
-
-        const file = account.provider === 's3' ? null : await prisma.file.create({ data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 'google_drive', providerFileId, name: uploadedName, mimeType: uploadedMimeType, sizeBytes: meta.sizeBytes } })
+        const file = account.provider === 's3' ? null : await prisma.file.create({
+          data: {
+            userId: req.user!.id,
+            connectedAccountId: account.id,
+            folderId,
+            provider: 'google_drive',
+            providerFileId,
+            name: uploadedName,
+            mimeType: meta.mimeType,
+            sizeBytes: meta.sizeBytes,
+            ...(encryptionMeta ? { isEncrypted: true, encryptionVersion: 1, encryptedDEK: encryptionMeta.encryptedDEK, dekIV: encryptionMeta.dekIV, dekAuthTag: encryptionMeta.dekAuthTag, fileNonce: encryptionMeta.fileNonce, plaintextSize: meta.sizeBytes } : {}),
+          },
+        })
         if (file) {
           logUpload('database file created', { sessionId: session.id, fileId: file.id, accountId: account.id })
           completed.push({ ...file, sizeBytes: file.sizeBytes.toString() })
@@ -357,13 +379,29 @@ uploadRouter.post('/resumable/init', requireAuth, async (req: AuthRequest, res, 
       }
     }
 
+    const isEncrypted = Boolean(env.FILE_ENCRYPTION_ENABLED)
+    let encryptionMeta: { encryptedDEK: string; dekIV: string; dekAuthTag: string; fileNonce: string } | null = null
+    let uploadContentLength = sizeBytes
+
+    if (isEncrypted) {
+      const masterKey = deriveEncryptionMasterKey(env.TOKEN_ENCRYPTION_KEY)
+      const dek = generateFileDEK()
+      const wrapped = encryptDEK(dek, masterKey)
+      const encryptor = new ChunkedEncryptTransform(dek)
+      encryptionMeta = {
+        ...wrapped,
+        fileNonce: encryptor.getFileNonce().toString('base64'),
+      }
+      uploadContentLength = BigInt(encryptedFileSize(Number(sizeBytes)))
+    }
+
     // Initiate Google Drive Resumable Session
     const headers = new Headers()
     const token = await auth.getAccessToken()
     headers.set('Authorization', `Bearer ${token.token}`)
     headers.set('Content-Type', 'application/json')
-    headers.set('X-Upload-Content-Type', body.mimeType)
-    headers.set('X-Upload-Content-Length', sizeBytes.toString())
+    headers.set('X-Upload-Content-Type', isEncrypted ? 'application/octet-stream' : body.mimeType)
+    headers.set('X-Upload-Content-Length', uploadContentLength.toString())
 
     const initRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
       method: 'POST',
@@ -391,7 +429,9 @@ uploadRouter.post('/resumable/init', requireAuth, async (req: AuthRequest, res, 
         mimeType: body.mimeType,
         sizeBytes,
         status: 'uploading',
-        googleSessionUri: sessionUri
+        googleSessionUri: sessionUri,
+        isEncrypted,
+        ...(encryptionMeta ? { encryptedDEK: encryptionMeta.encryptedDEK, dekIV: encryptionMeta.dekIV, dekAuthTag: encryptionMeta.dekAuthTag, fileNonce: encryptionMeta.fileNonce } : {})
       }
     })
 
@@ -422,10 +462,12 @@ uploadRouter.get('/resumable/status/:id', requireAuth, async (req: AuthRequest, 
     const auth = await getAuthedGoogleClient(account)
     const token = await auth.getAccessToken()
 
+    const totalBytesToQuery = session.isEncrypted ? BigInt(encryptedFileSize(Number(session.sizeBytes))) : session.sizeBytes
+
     // Query Google Drive for uploaded offset
     const queryHeaders = new Headers()
     queryHeaders.set('Authorization', `Bearer ${token.token}`)
-    queryHeaders.set('Content-Range', `bytes */${session.sizeBytes}`)
+    queryHeaders.set('Content-Range', `bytes */${totalBytesToQuery}`)
 
     const queryRes = await fetch(session.googleSessionUri, {
       method: 'PUT',
@@ -435,7 +477,6 @@ uploadRouter.get('/resumable/status/:id', requireAuth, async (req: AuthRequest, 
     if (queryRes.status === 308) {
       const range = queryRes.headers.get('range')
       if (range) {
-        // e.g. bytes=0-1048575
         const parts = range.split('-')
         const lastByte = BigInt(parts[1])
         return res.json({ status: 'uploading', offset: (lastByte + 1n).toString() })
@@ -462,7 +503,6 @@ uploadRouter.put('/resumable/chunk/:id', requireAuth, async (req: AuthRequest, r
       return res.status(400).json({ code: 'MISSING_CONTENT_RANGE', message: 'Content-Range header is required.' })
     }
 
-    // Parse Content-Range, e.g. bytes 0-5242879/10485760
     const match = rangeHeader.match(/bytes\s+(\d+)-(\d+)\/(\d+)/)
     if (!match) return res.status(400).json({ code: 'INVALID_CONTENT_RANGE', message: 'Invalid Content-Range format.' })
 
@@ -481,16 +521,27 @@ uploadRouter.put('/resumable/chunk/:id', requireAuth, async (req: AuthRequest, r
     const drive = google.drive({ version: 'v3', auth })
     const token = await auth.getAccessToken()
 
-    // Stream chunk body from client to Google Drive resumable URI
+    let uploadBody: any = req
+    let putRangeHeader = rangeHeader
+    let putContentLength = (endByte - startByte + 1n).toString()
+
+    if (session.isEncrypted && session.encryptedDEK && session.dekIV && session.dekAuthTag && session.fileNonce) {
+      const masterKey = deriveEncryptionMasterKey(env.TOKEN_ENCRYPTION_KEY)
+      const dek = decryptDEK(session.encryptedDEK, session.dekIV, session.dekAuthTag, masterKey)
+      const fileNonce = Buffer.from(session.fileNonce, 'base64')
+      const encryptor = new ChunkedEncryptTransform(dek, fileNonce)
+      uploadBody = (req as Readable).pipe(encryptor)
+    }
+
     const putHeaders = new Headers()
     putHeaders.set('Authorization', `Bearer ${token.token}`)
-    putHeaders.set('Content-Range', rangeHeader)
-    putHeaders.set('Content-Length', (endByte - startByte + 1n).toString())
+    putHeaders.set('Content-Range', putRangeHeader)
+    putHeaders.set('Content-Length', putContentLength)
 
     const putRes = await fetch(session.googleSessionUri, {
       method: 'PUT',
       headers: putHeaders,
-      body: req as any,
+      body: uploadBody,
       duplex: 'half'
     } as any)
 
@@ -499,10 +550,8 @@ uploadRouter.put('/resumable/chunk/:id', requireAuth, async (req: AuthRequest, r
     }
 
     if (putRes.ok) {
-      // Completed! Parse metadata
       const fileMeta = await putRes.json() as { id: string; name: string; mimeType: string }
 
-      // Make the file public (anyone with link can edit/download)
       try {
         await drive.permissions.create({
           fileId: fileMeta.id,
@@ -527,9 +576,18 @@ uploadRouter.put('/resumable/chunk/:id', requireAuth, async (req: AuthRequest, r
             folderId: session.folderId,
             provider: 'google_drive',
             providerFileId: fileMeta.id,
-            name: fileMeta.name || session.fileName,
-            mimeType: fileMeta.mimeType || session.mimeType,
-            sizeBytes: totalBytes
+            name: session.fileName || fileMeta.name,
+            mimeType: session.mimeType,
+            sizeBytes: session.sizeBytes,
+            ...(session.isEncrypted ? {
+              isEncrypted: true,
+              encryptionVersion: 1,
+              encryptedDEK: session.encryptedDEK,
+              dekIV: session.dekIV,
+              dekAuthTag: session.dekAuthTag,
+              fileNonce: session.fileNonce,
+              plaintextSize: session.sizeBytes,
+            } : {})
           }
         })
       }

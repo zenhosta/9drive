@@ -13,6 +13,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { Readable } from 'node:stream'
 import { ZipArchive } from 'archiver'
 import { createAuditLog } from '../../utils/audit.js'
+import { deriveEncryptionMasterKey, decryptDEK, ChunkedDecryptTransform } from '../../utils/file-crypto.js'
 
 
 
@@ -437,6 +438,12 @@ fileRouter.post('/batch-download', async (req: AuthRequest, res, next) => {
           const response = await fetch(url, { headers })
           if (!response.ok || !response.body) continue
           stream = Readable.fromWeb(response.body as any)
+        }
+        if (file.isEncrypted && file.encryptedDEK && file.dekIV && file.dekAuthTag) {
+          const masterKey = deriveEncryptionMasterKey(env.TOKEN_ENCRYPTION_KEY)
+          const dek = decryptDEK(file.encryptedDEK, file.dekIV, file.dekAuthTag, masterKey)
+          const decryptor = new ChunkedDecryptTransform(dek)
+          stream = stream.pipe(decryptor)
         }
         archive.append(stream, { name: fileName })
       } catch (err) {

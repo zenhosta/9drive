@@ -102,3 +102,20 @@ export async function streamS3File(file: FileWithAccount, range: string | undefi
   if (!body) return res.end()
   return body.pipe(res)
 }
+
+/** Fetch raw S3 object stream — used by encrypted file handler */
+export async function fetchS3FileStream(
+  file: FileWithAccount,
+  range?: string
+): Promise<{ stream: Readable; contentLength?: number; contentRange?: string }> {
+  const config = await getS3ConfigForAccount(file.connectedAccountId)
+  const client = createS3Client(config)
+  const response = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: file.providerFileId, Range: range }))
+  const body = response.Body as Readable
+  if (!body) throw new Error('S3 returned empty body')
+  return {
+    stream: body,
+    contentLength: response.ContentLength,
+    contentRange: response.ContentRange,
+  }
+}
