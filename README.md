@@ -40,7 +40,7 @@ Live preview: https://9drive.zenhosta.com
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=zenhosta/9drive&type=Date)](https://www.star-history.com/#zenhosta/9drive&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=zenhosta/9drive&type=Date)](https://star-history.dera.page/#zenhosta/9drive&type=Date)
 
 ## Project Structure
 
