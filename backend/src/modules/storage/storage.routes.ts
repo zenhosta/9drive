@@ -246,8 +246,9 @@ storageRouter.post('/rebalance/plan', async (req: AuthRequest, res, next) => {
     if (body.targetUsedPercent !== undefined && !planSource.totalBytes) return res.status(400).json({ code: 'PLAN_INVALID', message: 'This drive has no known capacity, so a target percentage cannot be used. Enter an amount to free instead.' })
 
     // The plan is built from the drive index so it sees every file in the drive, not only the 9drive folder.
-    const scan = await prisma.driveScan.findUnique({ where: { connectedAccountId: source.id } })
-    if (!scan || scan.status !== 'done') return res.status(409).json({ code: 'NOT_SCANNED', message: `Scan ${source.email} first so 9Drive knows which files are on it.` })
+    // A rescan in progress doesn't block planning: the previous index is kept until the new one replaces it.
+    const indexedCount = await prisma.driveItem.count({ where: { connectedAccountId: source.id } })
+    if (indexedCount === 0) return res.status(409).json({ code: 'NOT_SCANNED', message: `Scan ${source.email} first so 9Drive knows which files are on it.` })
     const files = await prisma.driveItem.findMany({ where: { userId, connectedAccountId: source.id }, select: { id: true, name: true, sizeBytes: true, mimeType: true } })
     const plan = buildPlan({
       source: planSource,

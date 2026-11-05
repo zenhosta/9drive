@@ -88,7 +88,7 @@ export function TargetFolderPicker({ accountId, value, onChange }: { accountId: 
             {stack.map((c, i) => (
               <span key={`${c.id}-${i}`} className="flex items-center gap-1">
                 {i > 0 ? <ChevronRight className="h-3.5 w-3.5 text-slate-400" aria-hidden /> : null}
-                <button type="button" className={cn('rounded px-1 font-semibold hover:bg-slate-100', i === stack.length - 1 && 'text-blue-600')} onClick={() => goTo(i)}>{c.name}</button>
+                <button type="button" className={cn('rounded px-1 font-semibold hover:bg-slate-100', i === stack.length - 1 && 't-link')} onClick={() => goTo(i)}>{c.name}</button>
               </span>
             ))}
           </nav>
@@ -104,7 +104,7 @@ export function TargetFolderPicker({ accountId, value, onChange }: { accountId: 
             <Button type="button" size="sm" variant="outline" onClick={create} disabled={creating || !newName.trim()}><FolderPlus className="h-4 w-4" />{creating ? 'Creating...' : 'Create'}</Button>
           </div>
 
-          {error ? <p role="alert" className="mt-2 text-xs text-red-600">{error}</p> : null}
+          {error ? <p role="alert" className="mt-2 text-xs t-bad">{error}</p> : null}
 
           <p className="mt-3 truncate text-xs text-slate-500">Files will be moved into <b>{pathOf(stack)}</b></p>
         </div>

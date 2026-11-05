@@ -15,7 +15,23 @@ import { FOLDER_MIME } from '../jobs/move-logic.js'
  */
 
 const running = new Set<string>()
-const CHUNK = 400
+// Scans write thousands of rows; running several at once (and alongside moves/uploads) caused InnoDB deadlocks.
+// They now run one at a time, and individual writes retry when MySQL picks them as a deadlock victim.
+let queue: Promise<void> = Promise.resolve()
+
+const isLockError = (error: unknown) => /deadlock|lock wait timeout|\b1213\b|\b1205\b/i.test(error instanceof Error ? error.message : String(error))
+
+export async function retryOnLock<T>(fn: () => Promise<T>, attempts = 8): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await fn()
+    } catch (error) {
+      if (!isLockError(error) || attempt >= attempts) throw error
+      await new Promise((resolve) => setTimeout(resolve, 150 * attempt + Math.random() * 250))
+    }
+  }
+}
+const CHUNK = 200
 
 type FolderNode = { name: string; parent: string | null }
 
@@ -34,11 +50,11 @@ export function buildPath(folderId: string | undefined, folders: Map<string, Fol
 
 /** Makes a freshly uploaded/synced 9Drive file show up in the drive browser without waiting for the next scan. */
 export async function indexTrackedFile(file: { userId: string; connectedAccountId: string; providerFileId: string; name: string; mimeType: string; sizeBytes: bigint }, path = 'My Drive/9drive') {
-  await prisma.driveItem.upsert({
+  await retryOnLock(() => prisma.driveItem.upsert({
     where: { connectedAccountId_providerFileId: { connectedAccountId: file.connectedAccountId, providerFileId: file.providerFileId } },
     create: { userId: file.userId, connectedAccountId: file.connectedAccountId, providerFileId: file.providerFileId, name: file.name.slice(0, 255), mimeType: file.mimeType, sizeBytes: file.sizeBytes, path, modifiedAt: new Date(), scanId: crypto.randomUUID() },
     update: { name: file.name.slice(0, 255), mimeType: file.mimeType, sizeBytes: file.sizeBytes, modifiedAt: new Date() },
-  })
+  }))
 }
 
 export function isScanRunning(accountId: string) {
@@ -57,9 +73,15 @@ export async function startScans(userId: string, accountIds?: string[]) {
     if (running.has(account.id)) continue
     running.add(account.id)
     started.push(account.id)
-    void scanAccount(account.id, userId)
+    await prisma.driveScan.upsert({
+      where: { connectedAccountId: account.id },
+      create: { connectedAccountId: account.id, status: 'running', itemsFound: 0, startedAt: new Date() },
+      update: { status: 'running', itemsFound: 0, error: null, startedAt: new Date(), finishedAt: null },
+    })
+    const task = () => scanAccount(account.id, userId)
       .catch((error) => console.error('[scan] failed', account.id, error instanceof Error ? error.message : error))
       .finally(() => running.delete(account.id))
+    queue = queue.then(task, task)
   }
   return started
 }
@@ -98,13 +120,14 @@ async function scanAccount(accountId: string, userId: string) {
         path: buildPath(f.parents?.[0], folders, rootId),
         modifiedAt: f.modifiedTime ? new Date(f.modifiedTime) : null,
       }))
-      for (let i = 0; i < rows.length; i += CHUNK) await upsertRows(userId, accountId, scanId, rows.slice(i, i + CHUNK))
+      rows.sort((a, b) => (a.providerFileId < b.providerFileId ? -1 : 1)) // same lock order every time
+      for (let i = 0; i < rows.length; i += CHUNK) await retryOnLock(() => upsertRows(userId, accountId, scanId, rows.slice(i, i + CHUNK)))
       found += rows.length
       await prisma.driveScan.update({ where: { connectedAccountId: accountId }, data: { itemsFound: found } })
       pageToken = res.data.nextPageToken ?? undefined
     } while (pageToken)
 
-    const removed = await prisma.driveItem.deleteMany({ where: { connectedAccountId: accountId, scanId: { not: scanId } } })
+    const removed = await retryOnLock(() => prisma.driveItem.deleteMany({ where: { connectedAccountId: accountId, scanId: { not: scanId } } }))
     await prisma.driveScan.update({ where: { connectedAccountId: accountId }, data: { status: 'done', itemsFound: found, finishedAt: new Date() } })
     console.info('[scan] done', { accountId, found, removed: removed.count })
   } catch (error) {

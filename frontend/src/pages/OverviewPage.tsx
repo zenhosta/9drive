@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Cloud, Database, Files, HardDrive, Link2, RefreshCw, Trash2, Wrench } from 'lucide-react'
+import { AlertTriangle, Cloud, Database, Files, FolderOpen, HardDrive, Link2, RefreshCw, Trash2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useJobs } from '@/context/JobsContext'
@@ -186,7 +186,7 @@ export function OverviewPage() {
         }
       />
 
-      {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm t-bad">{error}</p> : null}
 
       {loading ? (
         <div className="mt-6 grid gap-4" aria-busy="true">
@@ -239,7 +239,7 @@ export function OverviewPage() {
 
           {accounts.length === 0 ? (
             <Card className="mt-6 p-8 text-center">
-              <HardDrive className="mx-auto h-10 w-10 text-blue-600" />
+              <HardDrive className="mx-auto h-10 w-10 t-link" />
               <h2 className="mt-4 text-xl font-extrabold">{data?.accounts.length ? 'No drives match this filter' : 'No connected drives'}</h2>
               <p className="mt-2 text-sm text-slate-500">{data?.accounts.length ? 'Try a different provider filter.' : 'Connect a Google Drive account to start.'}</p>
               {!data?.accounts.length ? <Button className="mt-5" onClick={connectGoogle}><Link2 className="h-4 w-4" />Connect Drive</Button> : null}
@@ -254,7 +254,7 @@ export function OverviewPage() {
                   <Card key={account.id} className="flex flex-col p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white"><Icon className="h-5 w-5" /></div>
+                        <div className="on-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600"><Icon className="h-5 w-5" /></div>
                         <div className="min-w-0">
                           <h2 className="truncate font-extrabold" title={accountName(account)}>{accountName(account)}</h2>
                           <p className="truncate text-sm text-slate-500" title={account.email}>{account.displayName && account.displayName !== account.email ? `${account.email} · ` : ''}{providerLabel(account.provider)}</p>
@@ -298,6 +298,7 @@ export function OverviewPage() {
 
                     <div className="mt-auto flex flex-wrap gap-2 pt-4">
                       {account.provider === 'google_drive' ? <Button variant="soft" size="sm" onClick={() => navigate(`/rebalance?source=${account.id}`)}><Wrench className="h-4 w-4" />Free up space</Button> : null}
+                      <Button variant="outline" size="sm" onClick={() => navigate(`/drives/${account.id}`)}><FolderOpen className="h-4 w-4" />Browse files</Button>
                       <Button variant="danger" size="sm" onClick={() => setToDisconnect(account)}><Trash2 className="h-4 w-4" />Disconnect</Button>
                     </div>
                   </Card>

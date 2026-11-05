@@ -4,6 +4,7 @@ import { DriveLayout } from '@/layouts/DriveLayout'
 import { AllFilesRoute } from '@/pages/AllFilesRoute'
 import { ArchivedPage } from '@/pages/ArchivedPage'
 import { FilesByTypePage } from '@/pages/FilesByTypePage'
+import { DriveExplorerPage } from '@/pages/DriveExplorerPage'
 import { JobsPage } from '@/pages/JobsPage'
 import { RebalancePage } from '@/pages/RebalancePage'
 import { ToastProvider } from '@/context/ToastContext'
@@ -42,6 +43,7 @@ function App() {
           <Route index element={<Navigate to="/overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
           <Route path="all-files" element={<AllFilesRoute />} />
+          <Route path="drives/:accountId" element={<DriveExplorerPage />} />
           <Route path="files-by-type" element={<FilesByTypePage />} />
           <Route path="move-jobs" element={<JobsPage />} />
           <Route path="rebalance" element={<RebalancePage />} />

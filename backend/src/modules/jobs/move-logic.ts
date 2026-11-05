@@ -92,3 +92,20 @@ export function computeJobStatus(c: ItemCounts, cancelRequested: boolean): 'queu
   if (c.failed > 0) return 'completed_with_errors'
   return 'completed'
 }
+
+/**
+ * Destination sub-path for a file inside a selected folder, so the structure is kept like Google Drive does:
+ * moving "My Drive/Photos" and a file at "My Drive/Photos/2023" gives "Photos/2023"; a file directly in it gives "Photos".
+ */
+export function subpathFor(folderPath: string, itemPath: string) {
+  const folder = folderPath.replace(/\/+$/, '')
+  const name = folder.split('/').pop() ?? ''
+  const rest = itemPath === folder ? '' : itemPath.startsWith(`${folder}/`) ? itemPath.slice(folder.length + 1) : ''
+  return [name, rest].filter(Boolean).join('/')
+}
+
+export function splitSubpath(subpath: string | null | undefined) {
+  return (subpath ?? '').split('/').map((s) => s.trim()).filter(Boolean)
+}
+
+export const MAX_FOLDER_MOVE_ITEMS = 10000

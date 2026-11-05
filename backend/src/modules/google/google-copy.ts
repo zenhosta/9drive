@@ -191,3 +191,26 @@ export async function createFolder(drive: drive_v3.Drive, parentId: string, name
   if (!res.data.id) throw new DriveHttpError('Folder was not created.', 502)
   return { id: res.data.id, name: res.data.name ?? name }
 }
+
+const subfolderCache = new Map<string, Promise<string>>()
+const escapeQ = (v: string) => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+
+/** Finds or creates nested folders under `parentId` (merging into a folder that already has the name). */
+export async function ensureSubfolders(drive: drive_v3.Drive, accountId: string, parentId: string, segments: string[]): Promise<string> {
+  let current = parentId
+  for (const name of segments) {
+    const key = `${accountId}|${current}|${name.toLowerCase()}`
+    let pending = subfolderCache.get(key)
+    if (!pending) {
+      const parent = current
+      pending = (async () => {
+        const found = await drive.files.list({ q: `'${parent}' in parents and name = '${escapeQ(name)}' and mimeType = '${FOLDER_MIME}' and trashed = false`, fields: 'files(id)', pageSize: 1, spaces: 'drive' })
+        return found.data.files?.[0]?.id ?? (await createFolder(drive, parent, name)).id
+      })()
+      subfolderCache.set(key, pending)
+      pending.catch(() => subfolderCache.delete(key))
+    }
+    current = await pending
+  }
+  return current
+}

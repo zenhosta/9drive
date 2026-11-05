@@ -20,8 +20,8 @@ export function AllFilesRoute() {
     <>
       {uploads ? null : <PageHeader title="All Files" description="Everything in your connected drives, folder by folder." />}
       <div role="tablist" aria-label="All files view" className={cn('flex gap-2', uploads ? 'mt-2' : 'mt-5')}>
-        <button role="tab" aria-selected={!uploads} onClick={() => switchTo('drives')} className={cn('rounded-xl px-4 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', !uploads ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}>Drive files</button>
-        <button role="tab" aria-selected={uploads} onClick={() => switchTo('uploads')} className={cn('rounded-xl px-4 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', uploads ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}>Uploads & folders</button>
+        <button role="tab" aria-selected={!uploads} onClick={() => switchTo('drives')} className={cn('rounded-xl px-4 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', !uploads ? 'on-accent bg-blue-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}>Drive files</button>
+        <button role="tab" aria-selected={uploads} onClick={() => switchTo('uploads')} className={cn('rounded-xl px-4 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', uploads ? 'on-accent bg-blue-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}>Uploads & folders</button>
       </div>
       {uploads ? <AllFilesPage /> : <DriveFilesBrowser />}
     </>

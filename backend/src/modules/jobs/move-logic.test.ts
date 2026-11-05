@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { backoffDelayMs, classifyDriveError, computeJobStatus, isNativeGoogleMime, nativeExportFor, verifyCopy, withExtension } from './move-logic.js'
+import { backoffDelayMs, classifyDriveError, computeJobStatus, isNativeGoogleMime, nativeExportFor, splitSubpath, subpathFor, verifyCopy, withExtension } from './move-logic.js'
 
 test('native mime detection', () => {
   assert.equal(isNativeGoogleMime('application/vnd.google-apps.document'), true)
@@ -50,4 +50,13 @@ test('job status aggregation', () => {
   assert.equal(computeJobStatus({ ...c, running: 1, done: 1 }, false), 'running')
   assert.equal(computeJobStatus({ ...c, queued: 2 }, false), 'queued')
   assert.equal(computeJobStatus({ ...c, done: 1, cancelled: 2 }, true), 'cancelled')
+})
+
+test('folder structure is kept when a whole folder is moved or copied', () => {
+  assert.equal(subpathFor('My Drive/Photos', 'My Drive/Photos'), 'Photos')
+  assert.equal(subpathFor('My Drive/Photos', 'My Drive/Photos/2023'), 'Photos/2023')
+  assert.equal(subpathFor('My Drive/Photos/', 'My Drive/Photos/2023/Trip'), 'Photos/2023/Trip')
+  assert.equal(subpathFor('My Drive/A/B', 'My Drive/A/B/C'), 'B/C')
+  assert.deepEqual(splitSubpath('Photos//2023/ '), ['Photos', '2023'])
+  assert.deepEqual(splitSubpath(null), [])
 })

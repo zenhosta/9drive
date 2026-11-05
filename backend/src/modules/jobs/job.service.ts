@@ -1,13 +1,13 @@
 import type { MoveJob, MoveJobItem } from '@prisma/client'
 import { prisma } from '../../config/prisma.js'
 import { syncGoogleQuota } from '../google/google.service.js'
-import { DAILY_UPLOAD_LIMIT_BYTES, isNativeGoogleMime, nativeExportFor, TARGET_SAFETY_MARGIN_BYTES } from './move-logic.js'
+import { DAILY_UPLOAD_LIMIT_BYTES, isNativeGoogleMime, MAX_FOLDER_MOVE_ITEMS, nativeExportFor, subpathFor, TARGET_SAFETY_MARGIN_BYTES } from './move-logic.js'
 import { kickMoveRunner } from './move-runner.js'
 import { driveFor, resolveFolder } from '../google/google-copy.js'
 import { classifyDriveError } from './move-logic.js'
 
-export type MoveOptions = { includeNative: boolean; nativeFormat: 'native' | 'office'; targetFolderId?: string; targetFolderPath?: string }
-export type RequestedMove = { fileId?: string; driveItemId?: string; targetAccountId: string }
+export type MoveOptions = { includeNative: boolean; nativeFormat: 'native' | 'office'; targetFolderId?: string; targetFolderPath?: string; operation?: 'move' | 'copy' | 'delete'; permanent?: boolean }
+export type RequestedMove = { fileId?: string; driveItemId?: string; targetAccountId: string; subpath?: string }
 
 export class JobRequestError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {
@@ -27,6 +27,7 @@ type Candidate = {
   sourceConnected: boolean
   sourceIsGoogle: boolean
   targetAccountId: string
+  subpath?: string
 }
 
 /**
@@ -98,13 +99,14 @@ export async function createMoveJob(userId: string, type: 'move' | 'rebalance', 
     const native = isNativeGoogleMime(c.mimeType)
     if (native && !options.includeNative) { skip('Native Google file (Doc/Sheet/Slide/Drawing). Enable "include Google Docs, Sheets and Slides" to move it.', c.name); continue }
     if (native && !nativeExportFor(c.mimeType)) { skip('This type of Google file (form, script, site or shortcut) cannot be moved.', c.name); continue }
+    c.subpath = req.subpath
     accepted.push(c)
   }
 
   if (accepted.length === 0) throw new JobRequestError(400, 'NOTHING_TO_MOVE', 'None of the selected files can be moved.', { skipped })
 
   // Optional destination folder: one target drive, and the folder must exist and accept files.
-  let jobOptions: MoveOptions = { includeNative: options.includeNative, nativeFormat: options.nativeFormat }
+  let jobOptions: MoveOptions = { includeNative: options.includeNative, nativeFormat: options.nativeFormat, operation: options.operation ?? 'move' }
   if (options.targetFolderId) {
     const targetIdsUsed = [...new Set(accepted.map((a) => a.targetAccountId))]
     if (targetIdsUsed.length !== 1) throw new JobRequestError(400, 'BAD_TARGET_FOLDER', 'A destination folder can only be used when moving to a single drive.')
@@ -137,7 +139,7 @@ export async function createMoveJob(userId: string, type: 'move' | 'rebalance', 
   const job = await prisma.moveJob.create({
     data: {
       userId,
-      type,
+      type: options.operation === 'copy' ? 'copy' : type,
       status: 'queued',
       options: jobOptions,
       totalItems: accepted.length,
@@ -146,6 +148,7 @@ export async function createMoveJob(userId: string, type: 'move' | 'rebalance', 
         create: accepted.map((a) => ({
           fileId: a.fileId ?? null,
           driveItemId: a.driveItemId ?? null,
+          targetSubpath: a.subpath ? a.subpath.slice(0, 1000) : null,
           fileName: a.name,
           sourceAccountId: a.accountId,
           targetAccountId: a.targetAccountId,
@@ -157,6 +160,45 @@ export async function createMoveJob(userId: string, type: 'move' | 'rebalance', 
   })
   kickMoveRunner()
   return { job, accepted: accepted.length, skipped, warnings }
+}
+
+/** Expands selected folders into their indexed files, each tagged with the sub-path that recreates the structure. */
+export async function expandFolders(userId: string, folders: Array<{ accountId: string; path: string }>, targetAccountId: string): Promise<RequestedMove[]> {
+  const out: RequestedMove[] = []
+  for (const folder of folders) {
+    const path = folder.path.replace(/\/+$/, '')
+    if (!path || path === 'My Drive') throw new JobRequestError(400, 'BAD_FOLDER', 'Select a folder inside the drive, not the whole drive.')
+    const items = await prisma.driveItem.findMany({
+      where: { userId, connectedAccountId: folder.accountId, OR: [{ path }, { path: { startsWith: `${path}/` } }] },
+      select: { id: true, path: true },
+      take: MAX_FOLDER_MOVE_ITEMS + 1,
+    })
+    for (const item of items) out.push({ driveItemId: item.id, targetAccountId, subpath: subpathFor(path, item.path) })
+    if (out.length > MAX_FOLDER_MOVE_ITEMS) throw new JobRequestError(400, 'FOLDER_TOO_LARGE', `That selection has more than ${MAX_FOLDER_MOVE_ITEMS.toLocaleString()} files. Move it in smaller parts.`)
+  }
+  return out
+}
+
+/** Delete files from Drive (to the Drive trash, or permanently) as a background job with progress, cancel and retry. */
+export async function createDeleteJob(userId: string, driveItemIds: string[], permanent: boolean) {
+  const ids = [...new Set(driveItemIds)]
+  if (ids.length === 0) throw new JobRequestError(400, 'NOTHING_TO_DELETE', 'Select at least one file.')
+  if (ids.length > MAX_FOLDER_MOVE_ITEMS) throw new JobRequestError(400, 'TOO_MANY_FILES', `Delete at most ${MAX_FOLDER_MOVE_ITEMS.toLocaleString()} files at a time.`)
+  const items = await prisma.driveItem.findMany({ where: { id: { in: ids }, userId, connectedAccount: { provider: 'google_drive', status: 'connected' } } })
+  if (items.length === 0) throw new JobRequestError(400, 'NOTHING_TO_DELETE', 'None of the selected files can be deleted (not found or the drive is disconnected).')
+  const job = await prisma.moveJob.create({
+    data: {
+      userId,
+      type: 'delete',
+      status: 'queued',
+      options: { includeNative: false, nativeFormat: 'native', operation: 'delete', permanent },
+      totalItems: items.length,
+      totalBytes: items.reduce((sum, i) => sum + i.sizeBytes, 0n),
+      items: { create: items.map((i) => ({ driveItemId: i.id, fileName: i.name, sourceAccountId: i.connectedAccountId, targetAccountId: i.connectedAccountId, sourceProviderFileId: i.providerFileId, bytes: i.sizeBytes })) },
+    },
+  })
+  kickMoveRunner()
+  return { job, count: items.length, skipped: ids.length - items.length }
 }
 
 export function serializeJob(job: MoveJob) {

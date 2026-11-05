@@ -420,3 +420,58 @@ aside .card button.text-orange-600:hover {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- Readable text on coloured chips, tags and banners (both themes) ----------
+   The global rules above force a text colour on every span/div/p, which also hit text sitting on solid
+   or pastel coloured backgrounds. These classes opt those elements out explicitly. */
+.on-accent,
+.on-accent * {
+  color: #fff !important;
+}
+.on-accent .on-accent-muted {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+.tag { display: inline-block; border-radius: 9999px; padding: 0.125rem 0.625rem; font-size: 0.75rem; font-weight: 700; line-height: 1.25rem; }
+.tag-c0 { background: #dbeafe; color: #1e3a8a !important; }
+.tag-c1 { background: #d1fae5; color: #065f46 !important; }
+.tag-c2 { background: #ede9fe; color: #4c1d95 !important; }
+.tag-c3 { background: #fef3c7; color: #78350f !important; }
+.tag-c4 { background: #fce7f3; color: #831843 !important; }
+.tag-c5 { background: #cffafe; color: #164e63 !important; }
+.tag-c6 { background: #ecfccb; color: #365314 !important; }
+:root.dark .tag-c0 { background: rgba(96, 165, 250, 0.24); color: #bfdbfe !important; }
+:root.dark .tag-c1 { background: rgba(52, 211, 153, 0.22); color: #a7f3d0 !important; }
+:root.dark .tag-c2 { background: rgba(167, 139, 250, 0.26); color: #ddd6fe !important; }
+:root.dark .tag-c3 { background: rgba(251, 191, 36, 0.22); color: #fde68a !important; }
+:root.dark .tag-c4 { background: rgba(244, 114, 182, 0.24); color: #fbcfe8 !important; }
+:root.dark .tag-c5 { background: rgba(34, 211, 238, 0.2); color: #a5f3fc !important; }
+:root.dark .tag-c6 { background: rgba(163, 230, 53, 0.2); color: #d9f99d !important; }
+
+/* Pastel status chips and notices: dark text in light mode, light text on a tinted background in dark mode. */
+:root:not(.dark) .bg-amber-50, :root:not(.dark) .bg-amber-100, :root:not(.dark) .bg-amber-50 *, :root:not(.dark) .bg-amber-100 * { color: #78350f !important; }
+:root:not(.dark) .bg-emerald-100, :root:not(.dark) .bg-emerald-100 * { color: #065f46 !important; }
+:root:not(.dark) .bg-red-100, :root:not(.dark) .bg-red-100 * { color: #7f1d1d !important; }
+:root:not(.dark) .bg-blue-100, :root:not(.dark) .bg-blue-100 * { color: #1e3a8a !important; }
+:root.dark .bg-amber-50, :root.dark .bg-amber-100 { background-color: rgba(251, 191, 36, 0.16) !important; }
+:root.dark .bg-amber-50, :root.dark .bg-amber-50 *, :root.dark .bg-amber-100, :root.dark .bg-amber-100 * { color: #fde68a !important; }
+:root.dark .bg-emerald-100 { background-color: rgba(52, 211, 153, 0.2) !important; }
+:root.dark .bg-emerald-100, :root.dark .bg-emerald-100 * { color: #a7f3d0 !important; }
+:root.dark .bg-red-100 { background-color: rgba(248, 113, 113, 0.2) !important; }
+:root.dark .bg-red-100, :root.dark .bg-red-100 * { color: #fecaca !important; }
+:root.dark .bg-blue-100 { background-color: rgba(96, 165, 250, 0.22) !important; }
+:root.dark .bg-blue-100, :root.dark .bg-blue-100 * { color: #bfdbfe !important; }
+/* Toasts and notices keep their own readable colours regardless of the global span/p rule. */
+:root .toast-text, :root .toast-text * { color: inherit !important; }
+
+/* Semantic text colours that survive the global span/div/p colour rule, with separate values per theme. */
+.t-ok { color: #047857 !important; }
+.t-warn { color: #b45309 !important; }
+.t-bad { color: #b91c1c !important; }
+.t-link { color: #1d4ed8 !important; }
+.t-violet { color: #6d28d9 !important; }
+:root.dark .t-ok { color: #6ee7b7 !important; }
+:root.dark .t-warn { color: #fcd34d !important; }
+:root.dark .t-bad { color: #fca5a5 !important; }
+:root.dark .t-link { color: #93c5fd !important; }
+:root.dark .t-violet { color: #c4b5fd !important; }

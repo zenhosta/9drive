@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ArrowRightLeft, ChevronLeft, ChevronRight, Download, ExternalLink, FolderOpen, LayoutGrid, List, RefreshCw, Search, Wand2 } from 'lucide-react'
+import { ArrowRightLeft, CheckSquare, ChevronLeft, Copy, Trash2, ChevronRight, Download, ExternalLink, FolderOpen, RefreshCw, Search, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { DeleteFilesDialog } from '@/components/drive/DeleteFilesDialog'
 import { MoveToDriveDialog } from '@/components/drive/MoveToDriveDialog'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { useJobs } from '@/context/JobsContext'
 import { useToast } from '@/context/ToastContext'
 import { apiFetch, formatBytes, formatDate } from '@/lib/api'
-import { badgeTone, authedFetch, downloadIndexedFile, driveName, googleDriveLink, TypeIcon, type IndexedRow } from '@/components/drive/drive-bits'
+import { badgeTone, downloadIndexedFile, driveName, googleDriveLink, Thumb, ViewToggle, type IndexedRow } from '@/components/drive/drive-bits'
 import { isCategoryKey, type CategoryKey } from '@/lib/file-types'
 import { cn } from '@/lib/utils'
 
@@ -24,42 +25,13 @@ type Account = { id: string; email: string; displayName: string | null }
 type View = 'list' | 'grid'
 
 const PAGE_SIZE = 50
-const THUMB_MAX_BYTES = 3 * 1024 * 1024
 const GB = 1024 ** 3
 const viewKey = '9drive:files-by-type-view'
 const sizeFilters = [{ label: 'Any size', value: '' }, { label: 'Over 1 MB', value: '1' }, { label: 'Over 10 MB', value: '10' }, { label: 'Over 100 MB', value: '100' }, { label: 'Over 1 GB', value: '1024' }]
 
-/** Downloads a small image only when its card scrolls into view. Large files and non-images show an icon. */
-function Thumb({ file }: { file: Row }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [src, setSrc] = useState<string | null>(null)
-  useEffect(() => {
-    if (file.category !== 'images' || Number(file.sizeBytes) > THUMB_MAX_BYTES) return undefined
-    const node = ref.current
-    if (!node) return undefined
-    let url: string | null = null
-    let cancelled = false
-    const observer = new IntersectionObserver((entries) => {
-      if (!entries.some((e) => e.isIntersecting)) return
-      observer.disconnect()
-      authedFetch(`/drive-index/${file.id}/download`)
-        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('thumb'))))
-        .then((blob) => { if (!cancelled) { url = URL.createObjectURL(blob); setSrc(url) } })
-        .catch(() => undefined)
-    }, { rootMargin: '150px' })
-    observer.observe(node)
-    return () => { cancelled = true; observer.disconnect(); if (url) URL.revokeObjectURL(url) }
-  }, [file.id, file.category, file.sizeBytes])
-  return (
-    <div ref={ref} className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl bg-slate-100">
-      {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : <TypeIcon category={file.category} className="h-14 w-14" />}
-    </div>
-  )
-}
-
 export function FilesByTypePage() {
   const [params, setParams] = useSearchParams()
-  const { finishedVersion } = useJobs()
+  const { finishedVersion, refresh } = useJobs()
   const toast = useToast()
   const category = (isCategoryKey(params.get('type')) ? params.get('type') : 'all') as CategoryKey | 'all'
   const accountId = params.get('drive') ?? ''
@@ -80,10 +52,12 @@ export function FilesByTypePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Map<string, Row>>(new Map())
-  const [moveOpen, setMoveOpen] = useState(false)
+  const [dialog, setDialog] = useState<'move' | 'copy' | null>(null)
   const [sizeGb, setSizeGb] = useState('5')
   const [picking, setPicking] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [selectingAll, setSelectingAll] = useState(false)
   const requestId = useRef(0)
   const wasScanning = useRef(false)
 
@@ -208,6 +182,39 @@ export function FilesByTypePage() {
     }
   }
 
+  /** Selects every file matching the current filters (up to 3,000, largest first). */
+  async function selectAllMatching() {
+    setSelectingAll(true)
+    try {
+      const p = new URLSearchParams(filterQuery)
+      p.set('category', category)
+      p.set('bytes', '1000000000000000')
+      const r = await apiFetch<{ files: Row[]; count: number; totalBytes: string }>(`/drive-index/select-by-size?${p}`)
+      setSelected(new Map(r.files.map((f) => [f.id, f])))
+      if (r.count >= 3000) toast.info('Selected the 3,000 largest matching files. Narrow the filters to select the rest.')
+      else toast.success(`Selected ${r.count.toLocaleString()} files (${formatBytes(r.totalBytes)}).`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not select all')
+    } finally {
+      setSelectingAll(false)
+    }
+  }
+
+  async function confirmDelete(permanent: boolean) {
+    setBusy(true)
+    try {
+      const r = await apiFetch<{ jobId: string; count: number }>('/drive-index/delete', { method: 'POST', body: JSON.stringify({ driveItemIds: selectedList.map((f) => f.id), permanent }) })
+      toast.success(`${permanent ? 'Deleting' : 'Moving to trash'}: ${r.count.toLocaleString()} file${r.count === 1 ? '' : 's'}. Progress is shown at the bottom left.`)
+      setDeleteOpen(false)
+      setSelected(new Map())
+      await refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function downloadOne(file: Row) {
     setBusy(true)
     try {
@@ -238,7 +245,7 @@ export function FilesByTypePage() {
 
       {neverScanned ? (
         <Card className="mt-6 p-6 text-center">
-          <FolderOpen className="mx-auto h-9 w-9 text-blue-600" />
+          <FolderOpen className="mx-auto h-9 w-9 t-link" />
           <h2 className="mt-3 text-lg font-extrabold">Scan your drives to list every file</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">9Drive reads the file names, sizes and folders in each connected drive (it does not download anything). Large drives can take a minute or two.</p>
           <Button className="mt-4" onClick={() => startScan()} disabled={scanning}>Scan all drives</Button>
@@ -248,7 +255,7 @@ export function FilesByTypePage() {
       {scan.some((s) => s.status === 'running' || s.status === 'failed') ? (
         <div className="mt-4 grid gap-2">
           {scan.filter((s) => s.status === 'running' || s.status === 'failed').map((s) => (
-            <p key={s.accountId} className={cn('rounded-xl p-3 text-sm', s.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700')} role={s.status === 'failed' ? 'alert' : 'status'}>
+            <p key={s.accountId} className={cn('rounded-xl p-3 text-sm', s.status === 'failed' ? 'bg-red-50 t-bad' : 'bg-blue-50 text-blue-700')} role={s.status === 'failed' ? 'alert' : 'status'}>
               {s.status === 'running' ? `Scanning ${s.email}: ${s.itemsFound.toLocaleString()} files found so far...` : `Scan of ${s.email} failed: ${s.error ?? 'unknown error'}`}
               {s.status === 'failed' ? <button className="ml-2 font-bold underline" onClick={() => startScan([s.accountId])}>Retry</button> : null}
             </p>
@@ -259,18 +266,18 @@ export function FilesByTypePage() {
       <div role="group" aria-label="Drives" className="-mx-1 mt-6 flex gap-2 overflow-x-auto px-1 pb-2">
         {[{ id: '', label: 'All drives', count: (summary?.drives ?? []).reduce((s, d) => s + d.count, 0), size: (summary?.drives ?? []).reduce((s, d) => s + Number(d.sizeBytes), 0) },
           ...scan.map((s) => ({ id: s.accountId, label: driveName(s), count: driveStats.get(s.accountId)?.count ?? 0, size: Number(driveStats.get(s.accountId)?.sizeBytes ?? 0) }))].map((d) => (
-          <button key={d.id || 'all'} aria-pressed={accountId === d.id} onClick={() => setParam({ drive: d.id || null })} className={cn('shrink-0 rounded-xl border px-3.5 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', accountId === d.id ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white hover:border-blue-300')}>
+          <button key={d.id || 'all'} aria-pressed={accountId === d.id} onClick={() => setParam({ drive: d.id || null })} className={cn('shrink-0 rounded-xl border px-3.5 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', accountId === d.id ? 'on-accent border-blue-600 bg-blue-600' : 'border-slate-200 bg-white hover:border-blue-300')}>
             <span className="block text-sm font-extrabold">{d.label}</span>
-            <span className={cn('block text-xs', accountId === d.id ? 'text-blue-100' : 'text-slate-500')}>{d.count.toLocaleString()} files · {formatBytes(d.size)}</span>
+            <span className={cn('block text-xs', accountId === d.id ? 'on-accent-muted' : 'text-slate-500')}>{d.count.toLocaleString()} files · {formatBytes(d.size)}</span>
           </button>
         ))}
       </div>
 
       <div role="tablist" aria-label="File types" className="-mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-2">
         {tabs.map((tab) => (
-          <button key={tab.key} role="tab" aria-selected={category === tab.key} onClick={() => setParam({ type: tab.key === 'all' ? null : tab.key })} className={cn('shrink-0 rounded-xl border px-3.5 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', category === tab.key ? 'border-violet-600 bg-violet-600 text-white' : 'border-slate-200 bg-white hover:border-violet-300')}>
+          <button key={tab.key} role="tab" aria-selected={category === tab.key} onClick={() => setParam({ type: tab.key === 'all' ? null : tab.key })} className={cn('shrink-0 rounded-xl border px-3.5 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500', category === tab.key ? 'on-accent border-violet-600 bg-violet-600' : 'border-slate-200 bg-white hover:border-violet-300')}>
             <span className="block text-sm font-extrabold">{tab.label} <span className="font-semibold opacity-80">{tab.count.toLocaleString()}</span></span>
-            <span className={cn('block text-xs', category === tab.key ? 'text-violet-100' : 'text-slate-500')}>{formatBytes(tab.sizeBytes)}</span>
+            <span className={cn('block text-xs', category === tab.key ? 'on-accent-muted' : 'text-slate-500')}>{formatBytes(tab.sizeBytes)}</span>
           </button>
         ))}
       </div>
@@ -290,14 +297,12 @@ export function FilesByTypePage() {
           </select>
         </label>
         <Button variant="outline" size="sm" onClick={() => setParam({ order: order === 'asc' ? null : 'asc' })} aria-label={`Sort order: ${order === 'asc' ? 'ascending' : 'descending'}`}>{order === 'asc' ? 'Ascending' : 'Descending'}</Button>
-        <div className="ml-auto flex gap-1" role="group" aria-label="View">
-          <Button variant={view === 'list' ? 'soft' : 'ghost'} size="icon" aria-pressed={view === 'list'} aria-label="List view" onClick={() => changeView('list')}><List className="h-4 w-4" /></Button>
-          <Button variant={view === 'grid' ? 'soft' : 'ghost'} size="icon" aria-pressed={view === 'grid'} aria-label="Grid view" onClick={() => changeView('grid')}><LayoutGrid className="h-4 w-4" /></Button>
-        </div>
+        <div className="ml-auto"><ViewToggle view={view} onChange={changeView} /></div>
       </div>
 
-      <Card className="mt-4 flex flex-wrap items-center gap-3 p-3">
-        <Wand2 className="h-4 w-4 text-violet-600" aria-hidden />
+      <div className="mt-4 flex flex-wrap items-center gap-2"><Button variant="outline" size="sm" onClick={() => (selected.size > 0 && selected.size >= (data?.total ?? Infinity) ? setSelected(new Map()) : selectAllMatching())} disabled={selectingAll || (data?.total ?? 0) === 0}><CheckSquare className="h-4 w-4" />{selectingAll ? 'Selecting...' : selected.size > 0 && selected.size >= (data?.total ?? Infinity) ? 'Clear selection' : `Select all${data ? ` ${data.total.toLocaleString()}` : ''}`}</Button></div>
+      <Card className="mt-3 flex flex-wrap items-center gap-3 p-3">
+        <Wand2 className="h-4 w-4 t-violet" aria-hidden />
         <span className="text-sm font-semibold">Select the largest files totalling</span>
         <input className="h-9 w-20 rounded-xl border border-slate-200 px-3 text-sm" inputMode="decimal" aria-label="Gigabytes to select" value={sizeGb} onChange={(e) => setSizeGb(e.target.value)} />
         <span className="text-sm font-semibold">GB</span>
@@ -308,14 +313,16 @@ export function FilesByTypePage() {
       {selectedList.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3" role="toolbar" aria-label="Selection actions">
           <span className="text-sm font-extrabold text-blue-900">{selectedList.length.toLocaleString()} selected · {formatBytes(selectedBytes)}</span>
-          <Button size="sm" onClick={() => setMoveOpen(true)}><ArrowRightLeft className="h-4 w-4" />Move to drive</Button>
+          <Button size="sm" onClick={() => setDialog('move')}><ArrowRightLeft className="h-4 w-4" />Move to drive</Button>
+          <Button size="sm" variant="outline" onClick={() => setDialog('copy')}><Copy className="h-4 w-4" />Copy to drive</Button>
+          <Button size="sm" variant="danger" onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4" />Delete</Button>
           {selectedList.length === 1 ? <Button variant="outline" size="sm" onClick={() => downloadOne(selectedList[0])} disabled={busy}><Download className="h-4 w-4" />Download</Button> : null}
           {selectedList.length === 1 ? <a className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold hover:bg-slate-50" target="_blank" rel="noreferrer" href={googleDriveLink(selectedList[0])}><ExternalLink className="h-4 w-4" />Open in Google Drive</a> : null}
           <Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>Clear</Button>
         </div>
       ) : null}
 
-      {error ? <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {error ? <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm t-bad">{error}</p> : null}
 
       <div className="mt-4" aria-busy={loading}>
         {data === null ? (
@@ -339,9 +346,9 @@ export function FilesByTypePage() {
                 {files.map((file) => (
                   <tr key={file.id} className={cn('border-t border-slate-100 hover:bg-slate-50', selected.has(file.id) && 'bg-blue-50/60')}>
                     <td className="py-2.5 pl-4"><input type="checkbox" aria-label={`Select ${file.name}`} checked={selected.has(file.id)} onChange={() => toggle(file)} /></td>
-                    <td className="max-w-[18rem] py-2.5 pr-3"><div className="flex items-center gap-3"><TypeIcon category={file.category} className="h-8 w-8" /><span className="truncate font-semibold" title={file.name}>{file.name}</span></div></td>
+                    <td className="max-w-[18rem] py-2.5 pr-3"><div className="flex items-center gap-3"><Thumb file={file} small /><span className="truncate font-semibold" title={file.name}>{file.name}</span></div></td>
                     <td className="max-w-[14rem] truncate py-2.5 pr-3 text-slate-500" title={file.path}>{file.path.replace(/^My Drive\/?/, '') || 'My Drive'}</td>
-                    <td className="py-2.5 pr-3"><span className={cn('rounded-full px-2.5 py-0.5 text-xs font-bold', badgeTone(file.connectedAccountId))} title={file.connectedAccount.email}>{driveName(file.connectedAccount)}</span></td>
+                    <td className="py-2.5 pr-3"><span className={badgeTone(file.connectedAccountId)} title={file.connectedAccount.email}>{driveName(file.connectedAccount)}</span></td>
                     <td className="whitespace-nowrap py-2.5 pr-3 text-right text-slate-500">{formatBytes(file.sizeBytes)}</td>
                     <td className="whitespace-nowrap py-2.5 pr-4 text-slate-500">{file.modifiedAt ? formatDate(file.modifiedAt) : '—'}</td>
                   </tr>
@@ -358,7 +365,7 @@ export function FilesByTypePage() {
                   <input type="checkbox" className="absolute left-2 top-2 h-4 w-4" aria-label={`Select ${file.name}`} checked={selected.has(file.id)} onChange={() => toggle(file)} />
                 </div>
                 <p className="mt-2 truncate text-sm font-bold" title={file.name}>{file.name}</p>
-                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500"><span>{formatBytes(file.sizeBytes)}</span><span className={cn('truncate rounded-full px-2 py-0.5 font-bold', badgeTone(file.connectedAccountId))} title={file.connectedAccount.email}>{driveName(file.connectedAccount)}</span></div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500"><span>{formatBytes(file.sizeBytes)}</span><span className={cn('truncate', badgeTone(file.connectedAccountId))} title={file.connectedAccount.email}>{driveName(file.connectedAccount)}</span></div>
               </Card>
             ))}
           </div>
@@ -375,10 +382,12 @@ export function FilesByTypePage() {
         </nav>
       ) : null}
 
+      <DeleteFilesDialog open={deleteOpen} fileCount={selectedList.length} folderCount={0} bytes={selectedBytes} busy={busy} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
       <MoveToDriveDialog
-        open={moveOpen}
+        open={dialog !== null}
+        operation={dialog ?? 'move'}
         files={selectedList.map((f) => ({ id: f.id, kind: 'drive' as const, name: f.name, mimeType: f.mimeType, sizeBytes: f.sizeBytes, accountId: f.connectedAccountId }))}
-        onClose={() => setMoveOpen(false)}
+        onClose={() => setDialog(null)}
         onStarted={() => setSelected(new Map())}
       />
     </>

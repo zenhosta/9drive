@@ -165,7 +165,7 @@ export function RebalancePage() {
   }
 
   const validAmount = mode === 'amount' ? Number(amountGb) > 0 : Number(percent) >= 1 && Number(percent) <= 99
-  const canPlan = Boolean(source) && validAmount && (autoTargets || targetIds.length > 0) && sourceScan?.status === 'done'
+  const canPlan = Boolean(source) && validAmount && (autoTargets || targetIds.length > 0) && (sourceScan?.indexedCount ?? 0) > 0
 
   return (
     <>
@@ -173,13 +173,13 @@ export function RebalancePage() {
 
       <ol className="mt-6 flex flex-wrap gap-2" aria-label="Steps">
         {steps.map((label, i) => (
-          <li key={label} aria-current={i === step ? 'step' : undefined} className={cn('flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold', i === step ? 'bg-blue-600 text-white' : i < step ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
+          <li key={label} aria-current={i === step ? 'step' : undefined} className={cn('flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold', i === step ? 'on-accent bg-blue-600' : i < step ? 'bg-emerald-100 t-ok' : 'bg-slate-100 text-slate-500')}>
             {i < step ? <Check className="h-3.5 w-3.5" /> : <span>{i + 1}</span>}{label}
           </li>
         ))}
       </ol>
 
-      {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+      {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm t-bad">{error}</p> : null}
 
       {step === 0 ? (
         <div className="mt-6 grid gap-3 md:grid-cols-2">
@@ -202,12 +202,12 @@ export function RebalancePage() {
         <Card className="mt-6 grid gap-6 p-5">
           <div>
             <p className="text-sm text-slate-500">Moving files out of</p>
-            <p className="font-extrabold">{source.email} <button className="ml-2 text-xs font-semibold text-blue-600 underline" onClick={() => setStep(0)}>change</button></p>
+            <p className="font-extrabold">{source.email} <button className="ml-2 text-xs font-semibold t-link underline" onClick={() => setStep(0)}>change</button></p>
           </div>
-          <div className={cn('rounded-xl p-3 text-sm', sourceScan?.status === 'done' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900')} role="status">
-            {sourceScan?.status === 'done' ? `${sourceScan.indexedCount.toLocaleString()} files on this drive are indexed and can be moved.` : scanRunning ? `Scanning this drive... ${sourceScan?.itemsFound.toLocaleString() ?? 0} files found so far.` : 'This drive has not been scanned yet, so 9Drive does not know which files are on it.'}
-            {sourceScan?.status !== 'done' && !scanRunning ? <Button className="ml-3" size="sm" variant="soft" onClick={scanSource}>Scan this drive</Button> : null}
-            {sourceScan?.status === 'done' ? <button className="ml-3 font-bold underline" onClick={scanSource}>Rescan</button> : null}
+          <div className={cn('rounded-xl p-3 text-sm', (sourceScan?.indexedCount ?? 0) > 0 ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900')} role="status">
+            {(sourceScan?.indexedCount ?? 0) > 0 ? `${sourceScan!.indexedCount.toLocaleString()} files on this drive are indexed and can be moved.${scanRunning ? ' (updating...)' : ''}` : scanRunning ? `Scanning this drive... ${sourceScan?.itemsFound.toLocaleString() ?? 0} files found so far.` : 'This drive has not been scanned yet, so 9Drive does not know which files are on it.'}
+            {(sourceScan?.indexedCount ?? 0) === 0 && !scanRunning ? <Button className="ml-3" size="sm" variant="soft" onClick={scanSource}>Scan this drive</Button> : null}
+            {(sourceScan?.indexedCount ?? 0) > 0 && !scanRunning ? <button className="ml-3 font-bold underline" onClick={scanSource}>Rescan</button> : null}
           </div>
           <fieldset className="grid gap-3">
             <legend className="mb-1 text-sm font-semibold">How much should be freed?</legend>
@@ -233,7 +233,7 @@ export function RebalancePage() {
             <dl className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div><dt className="text-xs text-slate-500">Requested</dt><dd className="font-extrabold">{formatBytes(plan.needBytes)}</dd></div>
               <div><dt className="text-xs text-slate-500">Will move</dt><dd className="font-extrabold">{plan.items.length} files · {formatBytes(plan.plannedBytes)}</dd></div>
-              <div><dt className="text-xs text-slate-500">Shortfall</dt><dd className={cn('font-extrabold', plan.shortfallBytes !== '0' && 'text-amber-600')}>{formatBytes(plan.shortfallBytes)}</dd></div>
+              <div><dt className="text-xs text-slate-500">Shortfall</dt><dd className={cn('font-extrabold', plan.shortfallBytes !== '0' && 't-warn')}>{formatBytes(plan.shortfallBytes)}</dd></div>
               <div><dt className="text-xs text-slate-500">Skipped (no room)</dt><dd className="font-extrabold">{plan.unplaced.length}</dd></div>
             </dl>
             <ul className="mt-4 grid gap-2">{plan.warnings.map((w) => <li key={w} className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{w}</li>)}</ul>

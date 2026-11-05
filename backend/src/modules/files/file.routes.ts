@@ -13,7 +13,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { Readable } from 'node:stream'
 import { ZipArchive } from 'archiver'
 import { createAuditLog } from '../../utils/audit.js'
-import { createMoveJob, JobRequestError } from '../jobs/job.service.js'
+import { createMoveJob, expandFolders, JobRequestError } from '../jobs/job.service.js'
 import { CATEGORY_KEYS, CATEGORY_LABELS, categoryWhere, classifyFile, type CategoryKey } from './file-types.js'
 import type { Prisma } from '@prisma/client'
 
@@ -175,6 +175,8 @@ const moveToAccountSchema = z.object({
   driveItemIds: z.array(z.string().min(1)).max(5000).default([]),
   targetAccountId: z.string().min(1),
   targetFolderId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional(),
+  operation: z.enum(['move', 'copy']).default('move'),
+  folders: z.array(z.object({ accountId: z.string().min(1), path: z.string().min(1).max(1000) })).max(200).default([]),
   includeNative: z.boolean().default(false),
   nativeFormat: z.enum(['native', 'office']).default('native'),
 })
@@ -182,12 +184,13 @@ const moveToAccountSchema = z.object({
 fileRouter.post('/move-to-account', async (req: AuthRequest, res, next) => {
   try {
     const body = moveToAccountSchema.parse(req.body)
-    if (body.fileIds.length + body.driveItemIds.length === 0) return res.status(400).json({ code: 'NOTHING_TO_MOVE', message: 'Select at least one file.' })
+    if (body.fileIds.length + body.driveItemIds.length + body.folders.length === 0) return res.status(400).json({ code: 'NOTHING_TO_MOVE', message: 'Select at least one file.' })
     const requested = [
       ...body.fileIds.map((fileId) => ({ fileId, targetAccountId: body.targetAccountId })),
       ...body.driveItemIds.map((driveItemId) => ({ driveItemId, targetAccountId: body.targetAccountId })),
+      ...(body.folders.length ? await expandFolders(req.user!.id, body.folders, body.targetAccountId) : []),
     ]
-    const result = await createMoveJob(req.user!.id, 'move', requested, { includeNative: body.includeNative, nativeFormat: body.nativeFormat, targetFolderId: body.targetFolderId })
+    const result = await createMoveJob(req.user!.id, 'move', requested, { includeNative: body.includeNative, nativeFormat: body.nativeFormat, targetFolderId: body.targetFolderId, operation: body.operation })
     await createAuditLog(req.user!.id, 'MOVE_FILES_TO_ACCOUNT', 'move_job', result.job.id, { count: result.accepted, targetAccountId: body.targetAccountId })
     return res.status(202).json({ jobId: result.job.id, accepted: result.accepted, skipped: result.skipped, warnings: result.warnings })
   } catch (error) {

@@ -7,7 +7,10 @@ import { CATEGORY_KEYS, CATEGORY_LABELS, categoryWhere, classifyFile, type Categ
 import { streamGoogleFile } from '../files/stream-google-file.js'
 import { getAuthedGoogleClient } from '../google/google.service.js'
 import { createFolder, listChildFolders, resolveFolder } from '../google/google-copy.js'
+import { withBackoff } from '../google/backoff.js'
 import { google } from 'googleapis'
+import { createDeleteJob, expandFolders, JobRequestError } from '../jobs/job.service.js'
+import { createAuditLog } from '../../utils/audit.js'
 import { isScanRunning, startScans } from './drive-scan.js'
 
 export const driveIndexRouter = Router()
@@ -214,6 +217,51 @@ driveIndexRouter.post('/folders', async (req: AuthRequest, res, next) => {
     const folder = await createFolder(drive, body.parentId, body.name)
     const resolved = await resolveFolder(drive, folder.id)
     return res.status(201).json({ folder: { id: folder.id, name: folder.name, path: resolved.path } })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+driveIndexRouter.post('/delete', async (req: AuthRequest, res, next) => {
+  try {
+    const body = z.object({
+      driveItemIds: z.array(z.string().min(1)).max(10000).default([]),
+      folders: z.array(z.object({ accountId: z.string().min(1), path: z.string().min(1).max(1000) })).max(200).default([]),
+      permanent: z.boolean().default(false),
+    }).parse(req.body)
+    const expanded = body.folders.length ? await expandFolders(req.user!.id, body.folders, '') : []
+    const ids = [...body.driveItemIds, ...expanded.flatMap((r) => (r.driveItemId ? [r.driveItemId] : []))]
+    const result = await createDeleteJob(req.user!.id, ids, body.permanent)
+    await createAuditLog(req.user!.id, body.permanent ? 'DELETE_DRIVE_FILES_PERMANENT' : 'TRASH_DRIVE_FILES', 'move_job', result.job.id, { count: result.count })
+    return res.status(202).json({ jobId: result.job.id, count: result.count, skipped: result.skipped })
+  } catch (error) {
+    if (error instanceof JobRequestError) return res.status(error.status).json({ code: error.code, message: error.message, details: error.details })
+    return next(error)
+  }
+})
+
+// Small preview image for any file Drive can thumbnail (photos, videos, PDFs, documents...). Fetched server-side with
+// the account's own credentials, so the browser never needs a Google login and the image is cached for an hour.
+const thumbLinkCache = new Map<string, { link: string | null; at: number }>()
+
+driveIndexRouter.get('/:id/thumb', async (req: AuthRequest, res, next) => {
+  try {
+    const item = await prisma.driveItem.findFirstOrThrow({ where: { id: String(req.params.id), userId: req.user!.id }, include: { connectedAccount: true } })
+    const auth = await getAuthedGoogleClient(item.connectedAccount)
+    let entry = thumbLinkCache.get(item.id)
+    if (!entry || Date.now() - entry.at > 20 * 60_000) {
+      const meta = await withBackoff(() => google.drive({ version: 'v3', auth }).files.get({ fileId: item.providerFileId, fields: 'thumbnailLink' }))
+      entry = { link: meta.data.thumbnailLink ? meta.data.thumbnailLink.replace(/=s\d+$/, '=s400') : null, at: Date.now() }
+      thumbLinkCache.set(item.id, entry)
+      if (thumbLinkCache.size > 5000) thumbLinkCache.delete(thumbLinkCache.keys().next().value as string)
+    }
+    if (!entry.link) return res.status(404).json({ code: 'NO_THUMBNAIL', message: 'No thumbnail for this file.' })
+    const headers = await auth.getRequestHeaders()
+    const image = await fetch(entry.link, { headers: headers instanceof Headers ? Object.fromEntries(headers.entries()) : (headers as Record<string, string>) })
+    if (!image.ok) { thumbLinkCache.delete(item.id); return res.status(404).json({ code: 'NO_THUMBNAIL', message: 'Thumbnail unavailable.' }) }
+    res.setHeader('Content-Type', image.headers.get('content-type') ?? 'image/jpeg')
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+    return res.send(Buffer.from(await image.arrayBuffer()))
   } catch (error) {
     return next(error)
   }

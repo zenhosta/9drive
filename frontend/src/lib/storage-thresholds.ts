@@ -22,7 +22,7 @@ export const usageBarClass: Record<UsageLevel, string> = {
 }
 
 export const usageTextClass: Record<UsageLevel, string> = {
-  normal: 'text-emerald-600',
-  warning: 'text-amber-600',
-  critical: 'text-red-600',
+  normal: 't-ok',
+  warning: 't-warn',
+  critical: 't-bad',
 }

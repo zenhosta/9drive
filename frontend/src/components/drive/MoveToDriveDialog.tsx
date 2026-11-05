@@ -8,14 +8,14 @@ import { apiFetch, formatBytes } from '@/lib/api'
 import { usageBarClass, usageLevel, usagePercent } from '@/lib/storage-thresholds'
 import { cn } from '@/lib/utils'
 
-export type MovableFile = { id: string; kind?: 'file' | 'drive'; name: string; mimeType?: string; sizeBytes?: string; accountId?: string }
+export type MovableFile = { id: string; kind?: 'file' | 'drive' | 'folder'; path?: string; count?: number; name: string; mimeType?: string; sizeBytes?: string; accountId?: string }
 type OverviewAccount = { id: string; provider: string; email: string; displayName: string | null; totalBytes: string | null; usedBytes: string; availableBytes: string | null; unlimited: boolean }
 type MoveResponse = { jobId: string; accepted: number; skipped: Array<{ fileId: string; name: string; reason: string }>; warnings: string[] }
 
 const MARGIN = 100 * 1024 * 1024
 const isNative = (mime?: string) => Boolean(mime?.startsWith('application/vnd.google-apps.') && mime !== 'application/vnd.google-apps.folder')
 
-export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClose, onStarted }: { open: boolean; files: MovableFile[]; preselectSourceAccountId?: string; onClose: () => void; onStarted?: (jobId: string) => void }) {
+export function MoveToDriveDialog({ open, files, operation = 'move', preselectSourceAccountId, onClose, onStarted }: { open: boolean; files: MovableFile[]; operation?: 'move' | 'copy'; preselectSourceAccountId?: string; onClose: () => void; onStarted?: (jobId: string) => void }) {
   const { refresh } = useJobs()
   const [accounts, setAccounts] = useState<OverviewAccount[]>([])
   const [loading, setLoading] = useState(false)
@@ -40,8 +40,10 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
       .finally(() => setLoading(false))
   }, [open])
 
-  const nativeCount = files.filter((f) => isNative(f.mimeType)).length
-  const movable = useMemo(() => files.filter((f) => includeNative || !isNative(f.mimeType)), [files, includeNative])
+  const copy = operation === 'copy'
+  const nativeCount = files.filter((f) => f.kind !== 'folder' && isNative(f.mimeType)).length
+  const fileCount = files.reduce((n, f) => n + (f.kind === 'folder' ? (f.count ?? 1) : 1), 0)
+  const movable = useMemo(() => files.filter((f) => f.kind === 'folder' || includeNative || !isNative(f.mimeType)), [files, includeNative])
 
   const rows = useMemo(() => accounts.map((account) => {
     const toMove = movable.filter((f) => f.accountId !== account.id)
@@ -64,7 +66,7 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
     setSubmitting(true)
     setError('')
     try {
-      const data = await apiFetch<MoveResponse>('/files/move-to-account', { method: 'POST', body: JSON.stringify({ fileIds: files.filter((f) => f.kind !== 'drive').map((f) => f.id), driveItemIds: files.filter((f) => f.kind === 'drive').map((f) => f.id), targetAccountId: targetId, targetFolderId: folder?.id, includeNative, nativeFormat }) })
+      const data = await apiFetch<MoveResponse>('/files/move-to-account', { method: 'POST', body: JSON.stringify({ fileIds: files.filter((f) => !f.kind || f.kind === 'file').map((f) => f.id), driveItemIds: files.filter((f) => f.kind === 'drive').map((f) => f.id), folders: files.filter((f) => f.kind === 'folder' && f.path && f.accountId).map((f) => ({ accountId: f.accountId, path: f.path })), targetAccountId: targetId, targetFolderId: folder?.id, operation, includeNative, nativeFormat }) })
       await refresh()
       onStarted?.(data.jobId)
       if (data.skipped.length === 0 && data.warnings.length === 0) onClose()
@@ -81,14 +83,14 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
   return (
     <DummyModal
       open={open}
-      title="Move to drive"
-      description={files.length === 1 ? files[0].name : `${files.length} files · ${formatBytes(totalBytes)}`}
+      title={copy ? 'Copy to drive' : 'Move to drive'}
+      description={files.length === 1 ? files[0].name : `${fileCount.toLocaleString()} file${fileCount === 1 ? '' : 's'}${files.some((f) => f.kind === 'folder') ? ' (folders keep their structure)' : ''} · ${formatBytes(totalBytes)}`}
       onClose={onClose}
       className="sm:max-w-lg"
     >
       {result ? (
         <div className="grid gap-4">
-          <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Move started for {result.accepted} file{result.accepted === 1 ? '' : 's'}. Progress is shown at the bottom left and on the Jobs page.</p>
+          <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{copy ? 'Copy' : 'Move'} started for {result.accepted} file{result.accepted === 1 ? '' : 's'}. Progress is shown at the bottom left and on the Jobs page.</p>
           {result.warnings.map((w) => <p key={w} className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">{w}</p>)}
           {result.skipped.length > 0 ? (
             <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
@@ -100,7 +102,7 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
         </div>
       ) : (
         <div className="grid gap-4">
-          {error ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
+          {error ? <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm t-bad">{error}</p> : null}
           {loading ? <div className="grid gap-2" aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-slate-100" />)}</div> : (
             <fieldset className="grid gap-2">
               <legend className="mb-1 text-sm font-semibold">Choose the destination drive</legend>
@@ -110,7 +112,7 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
                 return (
                   <label key={account.id} className={cn('flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm', targetId === account.id ? 'border-blue-500 bg-blue-50/60' : 'border-slate-200', disabled && 'cursor-not-allowed opacity-50')}>
                     <input type="radio" name="target-drive" className="h-4 w-4" checked={targetId === account.id} disabled={disabled} onChange={() => setTargetId(account.id)} />
-                    <Icon className="h-5 w-5 shrink-0 text-blue-600" />
+                    <Icon className="h-5 w-5 shrink-0 t-link" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{account.displayName && account.displayName !== account.email ? `${account.displayName} · ` : ''}{account.email}</p>
                       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={cn('h-full rounded-full', usageBarClass[usageLevel(percent)])} style={{ width: `${percent}%` }} /></div>
@@ -140,10 +142,10 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
             </div>
           ) : null}
 
-          <p className="text-xs text-slate-500">Each file is copied, verified, and only then deleted from its current drive. If anything fails the original stays where it is.</p>
+          <p className="text-xs text-slate-500">{copy ? 'Each file is copied and verified. The originals stay where they are.' : 'Each file is copied, verified, and only then deleted from its current drive. If anything fails the original stays where it is.'}</p>
           <div className="grid gap-3 sm:flex sm:justify-end">
             <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
-            <Button onClick={submit} disabled={!targetId || submitting || movable.length === 0}>{submitting ? 'Starting...' : `Move ${movable.length} file${movable.length === 1 ? '' : 's'}`}</Button>
+            <Button onClick={submit} disabled={!targetId || submitting || movable.length === 0}>{submitting ? 'Starting...' : `${copy ? 'Copy' : 'Move'} ${fileCount.toLocaleString()} file${fileCount === 1 ? '' : 's'}`}</Button>
           </div>
         </div>
       )}

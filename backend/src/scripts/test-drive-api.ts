@@ -131,7 +131,92 @@ async function main() {
     const ex2 = await api('/storage/rebalance/execute', { method: 'POST', body: JSON.stringify({ sourceAccountId: source.id, items: [{ driveItemId: itemC.id, targetAccountId: target.id }] }) })
     check('rebalance execute rejects an already-moved file cleanly (no crash)', ex2.status === 400, `${ex2.status}`)
     const plan = await api('/storage/rebalance/plan', { method: 'POST', body: JSON.stringify({ sourceAccountId: source.id, freeUpBytes: String(5 * 1024 * 1024) }) })
+    if (plan.status !== 200) console.log('plan failed:', plan.status, JSON.stringify(plan.body).slice(0, 300))
     check('rebalance plan works on the drive index', plan.status === 200 && plan.body.items.length > 0 && plan.body.items.every((i: any) => i.driveItemId && i.fileId), `${plan.body?.items?.length} files`)
+    // ---- copy leaves the original; folders keep their structure; repeating merges instead of duplicating ----
+    const cp = await mk('copy')
+    const itemCp = await prisma.driveItem.create({ data: { userId, connectedAccountId: source.id, providerFileId: cp.id, name: cp.name, mimeType: 'text/plain', sizeBytes: BigInt(buf.length), md5, path: 'My Drive', scanId: crypto.randomUUID() } })
+    const destD = await api('/drive-index/folders', { method: 'POST', body: JSON.stringify({ accountId: target.id, parentId: 'root', name: `9drive-move-test-copydest-${tag}` }) })
+    driveCleanup.push({ accountId: target.id, id: destD.body.folder.id })
+    const cpJob = await api('/files/move-to-account', { method: 'POST', body: JSON.stringify({ driveItemIds: [itemCp.id], targetAccountId: target.id, targetFolderId: destD.body.folder.id, operation: 'copy' }) })
+    check('copy is accepted', cpJob.status === 202, JSON.stringify(cpJob.body).slice(0, 100))
+    check('copy job completed', (await waitJob(api, cpJob.body.jobId)) === 'completed')
+    const stillThere = await sourceDrive.files.get({ fileId: cp.id, fields: 'id,trashed' }).then((r) => !r.data.trashed).catch(() => false)
+    const srcRow = await prisma.driveItem.findUnique({ where: { id: itemCp.id } })
+    const copyRow = await prisma.driveItem.findFirst({ where: { connectedAccountId: target.id, md5, path: destD.body.folder.path } })
+    check('copy: original still on the source drive and in the index', stillThere && srcRow?.connectedAccountId === source.id)
+    check('copy: new file indexed on the target with the same md5', Boolean(copyRow))
+    if (copyRow) driveCleanup.push({ accountId: target.id, id: copyRow.providerFileId })
+
+    const topName = `9drive-move-test-tree-${tag}`
+    const top = await sourceDrive.files.create({ requestBody: { name: topName, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }, fields: 'id' })
+    driveCleanup.push({ accountId: source.id, id: top.data.id! })
+    const sub = await sourceDrive.files.create({ requestBody: { name: 'Sub', mimeType: 'application/vnd.google-apps.folder', parents: [top.data.id!] }, fields: 'id' })
+    const mkIn = async (parentId: string, name: string) => (await sourceDrive.files.create({ requestBody: { name, parents: [parentId] }, media: { mimeType: 'text/plain', body: Readable.from(buf) }, fields: 'id' })).data.id!
+    const f1 = await mkIn(top.data.id!, '9drive-move-test-f1.txt')
+    const f2 = await mkIn(sub.data.id!, '9drive-move-test-f2.txt')
+    const mkRow = (pid: string, name: string, path: string) => prisma.driveItem.create({ data: { userId, connectedAccountId: source.id, providerFileId: pid, name, mimeType: 'text/plain', sizeBytes: BigInt(buf.length), md5, path, scanId: crypto.randomUUID() } })
+    await mkRow(f1, '9drive-move-test-f1.txt', `My Drive/${topName}`)
+    await mkRow(f2, '9drive-move-test-f2.txt', `My Drive/${topName}/Sub`)
+    const treeDest = await api('/drive-index/folders', { method: 'POST', body: JSON.stringify({ accountId: target.id, parentId: 'root', name: `9drive-move-test-treedest-${tag}` }) })
+    driveCleanup.push({ accountId: target.id, id: treeDest.body.folder.id })
+    const treeCopy = await api('/files/move-to-account', { method: 'POST', body: JSON.stringify({ folders: [{ accountId: source.id, path: `My Drive/${topName}` }], targetAccountId: target.id, targetFolderId: treeDest.body.folder.id, operation: 'copy' }) })
+    check('copying a whole folder is accepted', treeCopy.status === 202, JSON.stringify(treeCopy.body).slice(0, 100))
+    check('folder copy completed', (await waitJob(api, treeCopy.body.jobId)) === 'completed')
+    const { drive: tDrive } = await driveOf(target.id)
+    const top1 = (await listChildFolders(tDrive, treeDest.body.folder.id)).filter((f) => f.name === topName)
+    const sub1 = top1[0] ? (await listChildFolders(tDrive, top1[0].id)).filter((f) => f.name === 'Sub') : []
+    check('folder copy recreated the structure (Folder/Sub) on the target', top1.length === 1 && sub1.length === 1)
+    const idx = await prisma.driveItem.findMany({ where: { connectedAccountId: target.id, path: { startsWith: `${treeDest.body.folder.path}/${topName}` } }, select: { path: true } })
+    check('copied files are indexed under the recreated folders', idx.some((r) => r.path.endsWith(`/${topName}`)) && idx.some((r) => r.path.endsWith('/Sub')), idx.map((r) => r.path.split('/').slice(-2).join('/')).join(', '))
+    const srcTree = await prisma.driveItem.count({ where: { connectedAccountId: source.id, path: { startsWith: `My Drive/${topName}` } } })
+    check('folder copy left the originals in place', srcTree === 2, String(srcTree))
+    const again = await api('/files/move-to-account', { method: 'POST', body: JSON.stringify({ folders: [{ accountId: source.id, path: `My Drive/${topName}` }], targetAccountId: target.id, targetFolderId: treeDest.body.folder.id, operation: 'copy' }) })
+    await waitJob(api, again.body.jobId)
+    const top2 = (await listChildFolders(tDrive, treeDest.body.folder.id)).filter((f) => f.name === topName)
+    check('copying the same folder again merges into it (no duplicate folder)', top2.length === 1, String(top2.length))
+    const treeMove = await api('/files/move-to-account', { method: 'POST', body: JSON.stringify({ folders: [{ accountId: source.id, path: `My Drive/${topName}` }], targetAccountId: target.id, targetFolderId: treeDest.body.folder.id, operation: 'move' }) })
+    check('moving a whole folder completed', (await waitJob(api, treeMove.body.jobId)) === 'completed')
+    const leftBehind = await prisma.driveItem.count({ where: { connectedAccountId: source.id, path: { startsWith: `My Drive/${topName}` } } })
+    const gone1 = await sourceDrive.files.get({ fileId: f1, fields: 'id' }).then(() => false).catch((e) => e.code === 404)
+    check('folder move: files left the source (index and Drive)', leftBehind === 0 && gone1, `${leftBehind}`)
+
+    // ---- delete: to the Drive trash (recoverable) and permanently ----
+    const d1 = await mk('del-trash')
+    const d2 = await mk('del-perm')
+    const rowD1 = await prisma.driveItem.create({ data: { userId, connectedAccountId: source.id, providerFileId: d1.id, name: d1.name, mimeType: 'text/plain', sizeBytes: BigInt(buf.length), md5, path: 'My Drive', scanId: crypto.randomUUID() } })
+    const rowD2 = await prisma.driveItem.create({ data: { userId, connectedAccountId: source.id, providerFileId: d2.id, name: d2.name, mimeType: 'text/plain', sizeBytes: BigInt(buf.length), md5, path: 'My Drive', scanId: crypto.randomUUID() } })
+    const delTrash = await api('/drive-index/delete', { method: 'POST', body: JSON.stringify({ driveItemIds: [rowD1.id], permanent: false }) })
+    check('delete (trash) is accepted', delTrash.status === 202, JSON.stringify(delTrash.body).slice(0, 80))
+    check('delete (trash) job completed', (await waitJob(api, delTrash.body.jobId)) === 'completed')
+    const trashed = await sourceDrive.files.get({ fileId: d1.id, fields: 'trashed' }).then((r) => r.data.trashed === true).catch(() => false)
+    check('file went to the Drive trash (still restorable) and left the index', trashed && (await prisma.driveItem.count({ where: { id: rowD1.id } })) === 0)
+    const delPerm = await api('/drive-index/delete', { method: 'POST', body: JSON.stringify({ driveItemIds: [rowD2.id], permanent: true }) })
+    check('delete (permanent) job completed', (await waitJob(api, delPerm.body.jobId)) === 'completed')
+    const permGone = await sourceDrive.files.get({ fileId: d2.id, fields: 'id' }).then(() => false).catch((e) => e.code === 404)
+    check('file was permanently deleted from Drive', permGone && (await prisma.driveItem.count({ where: { id: rowD2.id } })) === 0)
+    const delNothing = await api('/drive-index/delete', { method: 'POST', body: JSON.stringify({ driveItemIds: [] }) })
+    check('delete with nothing selected is refused', delNothing.status === 400, `${delNothing.status}`)
+
+    // ---- thumbnails ----
+    const img = await prisma.driveItem.findFirst({ where: { userId, mimeType: { startsWith: 'image/' }, sizeBytes: { gt: 4n * 1024n * 1024n } } })
+    if (img) {
+      const t = await fetch(`${base}/drive-index/${img.id}/thumb`, { headers })
+      check('thumbnail is served for a large photo (>4 MB)', t.status === 200 && (t.headers.get('content-type') ?? '').startsWith('image/') && (await t.arrayBuffer()).byteLength > 500, `${t.status} ${t.headers.get('content-type')}`)
+    }
+    const noAuth = await fetch(`${base}/drive-index/${img?.id ?? 'x'}/thumb`)
+    check('thumbnail requires login', noAuth.status === 401)
+
+    // ---- scanning every drive at once must not deadlock ----
+    await api('/drive-index/scan', { method: 'POST', body: JSON.stringify({}) })
+    await prisma.driveItem.findFirst() // keep a read going
+    let scanStatus: any[] = []
+    for (let i = 0; i < 400; i += 1) {
+      scanStatus = (await api('/drive-index/scan')).body.accounts
+      if (scanStatus.every((a: any) => a.status !== 'running')) break
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+    check('scanning all drives at once finishes without errors', scanStatus.length > 0 && scanStatus.every((a: any) => a.status === 'done'), scanStatus.map((a: any) => `${a.email.split('@')[0]}:${a.status}${a.error ? ` ${a.error.slice(0, 60)}` : ''}`).join(' | '))
     void sourceAccount
   } finally {
     for (const c of driveCleanup) { try { await (await driveOf(c.accountId)).drive.files.delete({ fileId: c.id }) } catch { /* gone */ } }

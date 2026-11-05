@@ -392,6 +392,7 @@ model MoveJobItem {
   targetAccountId      String   @map("target_account_id") @db.Char(36)
   sourceProviderFileId String   @map("source_provider_file_id") @db.VarChar(191)
   targetProviderFileId String?  @map("target_provider_file_id") @db.VarChar(191)
+  targetSubpath        String?  @map("target_subpath") @db.VarChar(1024)
   bytes                BigInt   @default(0)
   status               String   @default("queued") @db.VarChar(32)
   step                 String   @default("pending") @db.VarChar(32)

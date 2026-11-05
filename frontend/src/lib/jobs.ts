@@ -3,7 +3,7 @@ export type ItemStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' 
 
 export type MoveJob = {
   id: string
-  type: 'move' | 'rebalance'
+  type: 'move' | 'rebalance' | 'copy' | 'delete'
   status: JobStatus
   options: { includeNative?: boolean; nativeFormat?: string }
   totalItems: number

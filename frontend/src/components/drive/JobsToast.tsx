@@ -14,7 +14,7 @@ export function JobsToast() {
       className="fixed bottom-4 left-4 z-40 w-[min(calc(100vw-2rem),20rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-950/20 dark:border-slate-700 dark:bg-slate-900"
       aria-live="polite"
     >
-      <div className="flex items-center gap-2 text-sm font-extrabold"><ArrowRightLeft className="h-4 w-4 animate-pulse text-blue-600" />Moving files between drives</div>
+      <div className="flex items-center gap-2 text-sm font-extrabold"><ArrowRightLeft className="h-4 w-4 animate-pulse t-link" />Working on your files</div>
       <div className="mt-3 grid gap-3">
         {activeJobs.slice(0, 3).map((job) => (
           <div key={job.id}>

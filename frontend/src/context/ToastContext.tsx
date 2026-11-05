@@ -36,7 +36,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div key={t.id} role={t.kind === 'error' ? 'alert' : 'status'} className={cn('pointer-events-auto flex items-start gap-2.5 rounded-xl border p-3 text-sm shadow-lg', tone)}>
               <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              <p className="min-w-0 flex-1 break-words">{t.text}</p>
+              <p className="toast-text min-w-0 flex-1 break-words">{t.text}</p>
               <button type="button" className="rounded p-0.5 opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Dismiss notification" onClick={() => dismiss(t.id)}><X className="h-4 w-4" /></button>
             </div>
           )

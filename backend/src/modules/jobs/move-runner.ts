@@ -1,7 +1,9 @@
+import crypto from 'node:crypto'
 import type { ConnectedAccount, MoveJobItem } from '@prisma/client'
+import { retryOnLock } from '../drive-index/drive-scan.js'
 import { prisma } from '../../config/prisma.js'
 import { createAuditLog } from '../../utils/audit.js'
-import { deleteDriveFile, driveFor, exportToBuffer, findCopyByItem, getFileMeta, makePublicWriter, streamCopy, trashDriveFile, uploadBuffer } from '../google/google-copy.js'
+import { deleteDriveFile, driveFor, ensureSubfolders, exportToBuffer, findCopyByItem, getFileMeta, makePublicWriter, streamCopy, trashDriveFile, uploadBuffer } from '../google/google-copy.js'
 import { withBackoff } from '../google/backoff.js'
 import { ensureGoogleAppFolder, syncGoogleQuota } from '../google/google.service.js'
 import {
@@ -10,6 +12,7 @@ import {
   isNativeGoogleMime,
   MAX_ITEM_ATTEMPTS,
   nativeExportFor,
+  splitSubpath,
   TARGET_SAFETY_MARGIN_BYTES,
   verifyCopy,
   withExtension,
@@ -31,7 +34,7 @@ import {
 const CONCURRENCY = 3
 const POLL_MS = 3000
 
-type JobOptions = { includeNative?: boolean; nativeFormat?: 'native' | 'office'; targetFolderId?: string; targetFolderPath?: string }
+type JobOptions = { includeNative?: boolean; nativeFormat?: 'native' | 'office'; targetFolderId?: string; targetFolderPath?: string; operation?: 'move' | 'copy' | 'delete'; permanent?: boolean }
 type ItemWithJob = MoveJobItem & { job: { id: string; userId: string; options: unknown } }
 
 /** What is being moved: either a 9Drive file row or a row from the Drive index. */
@@ -132,20 +135,44 @@ async function setItem(id: string, data: Partial<Pick<MoveJobItem, 'status' | 's
 async function processItem(item: ItemWithJob) {
   try {
     if (item.attempts > MAX_ITEM_ATTEMPTS) throw new ItemFailure('Gave up after too many attempts (the backend may be crashing on this file).')
-    await runItem(item)
+    if (((item.job.options ?? {}) as JobOptions).operation === 'delete') await runDeleteItem(item)
+    else await runItem(item)
   } catch (error) {
+    const isDelete = ((item.job.options ?? {}) as JobOptions).operation === 'delete'
     if (error instanceof ItemCancelled) {
-      await cleanupTarget(item)
+      if (!isDelete) await cleanupTarget(item)
       await setItem(item.id, { status: 'cancelled', error: null })
     } else {
       const message = error instanceof ItemFailure ? error.message : friendly(error)
       log('item failed', { itemId: item.id, step: (await prisma.moveJobItem.findUnique({ where: { id: item.id }, select: { step: true } }))?.step, message })
-      await cleanupTarget(item)
+      if (!isDelete) await cleanupTarget(item)
       await setItem(item.id, { status: 'failed', error: message.slice(0, 2000) })
     }
   } finally {
     await refreshJob(item.jobId).catch(() => undefined)
   }
+}
+
+/** Deletes one file from Drive (trash or permanent) and drops it from the index and from 9Drive's own records. */
+async function runDeleteItem(item: ItemWithJob) {
+  const options = (item.job.options ?? {}) as JobOptions
+  const userId = item.job.userId
+  if (await isCancelled(item.jobId)) throw new ItemCancelled()
+  const source = await loadAccount(item.sourceAccountId, userId)
+  if (!source) throw new ItemFailure('The drive is no longer connected.')
+  const { drive } = await driveFor(source)
+  try {
+    if (options.permanent) await withBackoff(() => deleteDriveFile(drive, item.sourceProviderFileId))
+    else await withBackoff(() => trashDriveFile(drive, item.sourceProviderFileId))
+  } catch (error) {
+    if (classifyDriveError(error).status !== 404) throw error // already gone is fine
+  }
+  await retryOnLock(async () => {
+    await prisma.driveItem.deleteMany({ where: { connectedAccountId: item.sourceAccountId, providerFileId: item.sourceProviderFileId } })
+    await prisma.file.deleteMany({ where: { userId, connectedAccountId: item.sourceAccountId, providerFileId: item.sourceProviderFileId } })
+  })
+  await prisma.moveJobItem.update({ where: { id: item.id }, data: { status: 'done', step: 'done', error: null } })
+  log('item deleted', { itemId: item.id, permanent: Boolean(options.permanent) })
 }
 
 async function loadAccount(id: string, userId: string) {
@@ -193,7 +220,8 @@ async function runItem(item: ItemWithJob) {
   }
 
   if (step === 'db_updated') {
-    const note = await deleteSourceStep(item, source)
+    // A copy leaves the original where it is.
+    const note = options.operation === 'copy' ? null : await deleteSourceStep(item, source)
     await prisma.moveJobItem.update({ where: { id: item.id }, data: { status: 'done', step: 'done', error: null, ...(note ? { note } : {}) } })
     log('item done', { itemId: item.id, fileId: item.fileId })
   }
@@ -213,7 +241,9 @@ async function copyStep(item: ItemWithJob, file: Subject, source: ConnectedAccou
   const needed = native ? 0n : BigInt(meta.size ?? 0)
   await reserveTargetSpace(target, needed, item.targetAccountId)
   try {
-    const parentId = options.targetFolderId ?? (await ensureGoogleAppFolder(target))
+    const baseParent = options.targetFolderId ?? (await ensureGoogleAppFolder(target))
+    const segments = splitSubpath(item.targetSubpath)
+    const parentId = segments.length ? await withBackoff(() => ensureSubfolders(targetDrive, target.id, baseParent, segments)) : baseParent
     await setItem(item.id, { step: 'copying' })
 
     // Crash/retry safety: adopt a copy a previous attempt already finished.
@@ -291,11 +321,25 @@ async function verifyAndSwitch(item: ItemWithJob, file: Subject, source: Connect
   if (problem) throw new ItemFailure(`Verification failed, original kept: ${problem}`)
 
   // Re-point the records at the copy. The WHERE guards make this idempotent and safe against concurrent edits.
-  const switched = await switchRecords(item, targetId, targetMeta.md5Checksum ?? null, dbChanges, options.targetFolderPath)
+  const destPath = `${options.targetFolderPath ?? 'My Drive/9drive'}${item.targetSubpath ? `/${item.targetSubpath}` : ''}`
+  if (options.operation === 'copy') {
+    // The original stays; the copy becomes a new entry in the drive index.
+    await recordCopy(item, targetId, targetMeta.md5Checksum ?? null, destPath, { name: dbChanges.name ?? file.name, mimeType: dbChanges.mimeType ?? file.mimeType, sizeBytes: dbChanges.sizeBytes ?? BigInt(targetMeta.size ?? 0) })
+    return
+  }
+  const switched = await switchRecords(item, targetId, targetMeta.md5Checksum ?? null, dbChanges, destPath)
   if (!switched) throw new ItemFailure('The file was changed or deleted while it was being moved; the original was kept.')
 
   // Match upload behaviour: files are shared as "anyone with the link" so view-url links keep working. Best effort.
   await makePublicWriter(targetDrive, targetId).catch((error) => log('could not set public permission on moved file', { itemId: item.id, message: error instanceof Error ? error.message : String(error) }))
+}
+
+async function recordCopy(item: ItemWithJob, targetId: string, md5: string | null, path: string, f: { name: string; mimeType: string; sizeBytes: bigint }) {
+  await retryOnLock(() => prisma.driveItem.upsert({
+    where: { connectedAccountId_providerFileId: { connectedAccountId: item.targetAccountId, providerFileId: targetId } },
+    create: { userId: item.job.userId, connectedAccountId: item.targetAccountId, providerFileId: targetId, name: f.name.slice(0, 255), mimeType: f.mimeType, sizeBytes: f.sizeBytes, md5, path: path.slice(0, 1000), modifiedAt: new Date(), scanId: crypto.randomUUID() },
+    update: { name: f.name.slice(0, 255), mimeType: f.mimeType, sizeBytes: f.sizeBytes, md5, path: path.slice(0, 1000) },
+  }))
 }
 
 async function switchRecords(item: ItemWithJob, targetId: string, md5: string | null, changes: { name?: string; mimeType?: string; sizeBytes?: bigint }, folderPath?: string) {
