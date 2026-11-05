@@ -7,6 +7,7 @@ import { DummyModal } from '@/components/drive/DummyModal'
 import { MoveToDriveDialog } from '@/components/drive/MoveToDriveDialog'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { useJobs } from '@/context/JobsContext'
+import { useToast } from '@/context/ToastContext'
 import { API_URL, apiFetch, formatBytes, formatDate } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth'
 import { categoryStyle, isCategoryKey, type CategoryKey } from '@/lib/file-types'
@@ -90,7 +91,7 @@ export function FilesByTypePage() {
   const [previews, setPreviews] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const toast = useToast()
   const [selected, setSelected] = useState<Map<string, FileRow>>(new Map())
   const [moveOpen, setMoveOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -200,7 +201,6 @@ export function FilesByTypePage() {
     const list = [...selected.values()]
     if (list.length === 0) return
     setBusy(true)
-    setMessage('')
     try {
       const auth = { Authorization: `Bearer ${getAccessToken()}` }
       if (list.length === 1) {
@@ -213,7 +213,7 @@ export function FilesByTypePage() {
         await saveBlob(r, '9drive-download.zip')
       }
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Download failed')
+      toast.error(e instanceof Error ? e.message : 'Download failed')
     } finally {
       setBusy(false)
     }
@@ -230,7 +230,7 @@ export function FilesByTypePage() {
       setSelected(new Map())
       await Promise.all([loadList(), loadSummary()])
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Rename failed')
+      toast.error(e instanceof Error ? e.message : 'Rename failed')
     } finally {
       setBusy(false)
     }
@@ -243,10 +243,10 @@ export function FilesByTypePage() {
       await apiFetch('/files/batch', { method: 'DELETE', body: JSON.stringify({ fileIds: ids }) })
       setDeleteOpen(false)
       setSelected(new Map())
-      setMessage(`${ids.length} file${ids.length === 1 ? '' : 's'} moved to the Recycle Bin.`)
+      toast.success(`${ids.length} file${ids.length === 1 ? '' : 's'} moved to the Recycle Bin.`)
       await Promise.all([loadList(), loadSummary()])
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Delete failed')
+      toast.error(e instanceof Error ? e.message : 'Delete failed')
     } finally {
       setBusy(false)
     }
@@ -313,7 +313,6 @@ export function FilesByTypePage() {
       ) : null}
 
       {error ? <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-      {message ? <p role="status" className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
 
       <div className="mt-4" aria-busy={loading}>
         {data === null ? (

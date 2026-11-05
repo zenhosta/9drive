@@ -4,6 +4,7 @@ import { AlertTriangle, Cloud, Database, Files, HardDrive, Link2, RefreshCw, Tra
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useJobs } from '@/context/JobsContext'
+import { useToast } from '@/context/ToastContext'
 import { DummyModal } from '@/components/drive/DummyModal'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatBytes, formatDate } from '@/lib/api'
@@ -65,7 +66,7 @@ export function OverviewPage() {
   const [data, setData] = useState<Overview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const toast = useToast()
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [syncingId, setSyncingId] = useState<string | null>(null)
   const [sort, setSort] = useState<SortKey>('most_full')
@@ -91,21 +92,22 @@ export function OverviewPage() {
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
-      setMessage(event.data.status === 'success' ? 'Google Drive connected.' : 'Google Drive connection failed.')
+      if (event.data.status === 'success') toast.success('Google Drive connected.')
+      else toast.error('Google Drive connection failed.')
       load()
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [load])
+  }, [load, toast])
 
   async function refreshAll() {
     setRefreshingAll(true)
-    setMessage('')
     try {
       const result = await apiFetch<RefreshResponse>('/storage/overview/refresh', { method: 'POST' })
       setData(result.overview)
       const failed = result.results.filter((r) => !r.ok)
-      setMessage(failed.length === 0 ? `Synced ${result.results.length} account${result.results.length === 1 ? '' : 's'}.` : `${failed.length} of ${result.results.length} accounts failed to sync. See the warnings on the cards.`)
+      if (failed.length === 0) toast.success(`Synced ${result.results.length} account${result.results.length === 1 ? '' : 's'}.`)
+      else toast.error(`${failed.length} of ${result.results.length} accounts failed to sync. See the warnings on the cards.`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Refresh failed')
     } finally {
@@ -115,11 +117,10 @@ export function OverviewPage() {
 
   async function syncOne(account: OverviewAccount) {
     setSyncingId(account.id)
-    setMessage('')
     try {
       await apiFetch(`/connected-accounts/${account.id}/sync-quota`, { method: 'POST' })
     } catch (e) {
-      setMessage(`${account.email}: ${e instanceof Error ? e.message : 'Sync failed'}`)
+      toast.error(`${account.email}: ${e instanceof Error ? e.message : 'Sync failed'}`)
     } finally {
       await load()
       setSyncingId(null)
@@ -134,7 +135,7 @@ export function OverviewPage() {
       else window.location.href = result.url
     } catch (e) {
       popup?.close()
-      setMessage(e instanceof Error ? e.message : 'Failed to start Google connection')
+      toast.error(e instanceof Error ? e.message : 'Failed to start Google connection')
     }
   }
 
@@ -143,11 +144,11 @@ export function OverviewPage() {
     setDisconnecting(true)
     try {
       await apiFetch(`/connected-accounts/${toDisconnect.id}`, { method: 'DELETE' })
-      setMessage(`${toDisconnect.email} disconnected.`)
+      toast.success(`${toDisconnect.email} disconnected.`)
       setToDisconnect(null)
       await load()
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Failed to disconnect')
+      toast.error(e instanceof Error ? e.message : 'Failed to disconnect')
     } finally {
       setDisconnecting(false)
     }
@@ -186,7 +187,6 @@ export function OverviewPage() {
       />
 
       {error ? <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-      {message ? <p role="status" className="mt-5 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
 
       {loading ? (
         <div className="mt-6 grid gap-4" aria-busy="true">

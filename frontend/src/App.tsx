@@ -6,6 +6,7 @@ import { ArchivedPage } from '@/pages/ArchivedPage'
 import { FilesByTypePage } from '@/pages/FilesByTypePage'
 import { JobsPage } from '@/pages/JobsPage'
 import { RebalancePage } from '@/pages/RebalancePage'
+import { ToastProvider } from '@/context/ToastContext'
 import { JobsProvider } from '@/context/JobsContext'
 import { JobsToast } from '@/components/drive/JobsToast'
 import { OverviewPage } from '@/pages/OverviewPage'
@@ -27,6 +28,7 @@ import { UploadProvider } from '@/context/UploadContext'
 
 function App() {
   return (
+    <ToastProvider>
     <UploadProvider>
       <Routes>
       <Route path="login" element={<LoginPage />} />
@@ -57,6 +59,7 @@ function App() {
       <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
     </UploadProvider>
+    </ToastProvider>
   )
 }
 

@@ -246,6 +246,39 @@ Either way, the credentials are encrypted and stored in MySQL as one global conf
 
 </details>
 
+## Overview, moving files between drives, and files by type
+
+**Overview** (`/overview`, the landing page) shows every connected drive on one page: used, free and total space with a colour state (normal below 70%, warning from 70% to 90%, critical above 90%), how many files 9Drive stores on it, last quota sync, connection health, and per-drive **Sync quota**, **Reconnect**, **Free up space** and **Disconnect** actions. **Refresh all** syncs every drive in parallel and reports failures per drive. "Used" is the whole Google account (including things 9Drive doesn't track and the Drive trash); "stored by 9Drive" counts only files in 9Drive's database.
+
+**Move to drive**: select files in All Files or Files by Type (or right-click one) and choose *Move to drive...*. **Free up space** on an Overview card opens the **rebalance wizard**: pick a source drive, say how much to free (GB or a target percentage), pick target drives or leave it on automatic, review a dry-run plan with before/after bars, then confirm. Progress shows at the bottom left and on the **Jobs** page, where jobs can be cancelled and failed files retried.
+
+How a single file moves:
+
+1. The target's quota is refreshed and checked (100 MB safety margin; rebalance never fills a target past 90%).
+2. The file is streamed from the source Drive straight into a resumable upload on the target's `9drive` folder. Nothing is written to disk. Copies are tagged with the job item so a crash can adopt a finished copy instead of uploading a duplicate.
+3. The copy is verified (size, plus md5 when Drive provides one).
+4. Only then is the 9Drive record pointed at the new copy. The 9Drive file ID, name, virtual folder, share links and preview links do not change.
+5. Only after that is the original permanently deleted from the source Drive. If permanent delete is refused, the original is moved to that Drive's trash and the job notes it (the whole trash is never emptied).
+6. If anything fails before step 4, the partial copy is removed and the original is left untouched.
+
+Good to know:
+
+- Only Google Drive to Google Drive is supported. S3 accounts cannot be a source or a target.
+- Two files at a time per worker (3 workers), with exponential backoff on 403/429/5xx. Jobs survive a backend restart: interrupted items are re-queued and resume from their saved step. The worker assumes a single backend process.
+- Google caps uploads at roughly 750 GB per day per account. Plans warn when a target would receive more.
+- **Google Docs, Sheets and Slides are skipped by default.** They count for little or no quota, so moving them frees almost nothing. If you opt in they are exported and re-uploaded (Docs/Sheets/Slides back into editable Google format, or as .docx/.xlsx/.pptx; Drawings always become PNG). This gives them a new Drive file ID and loses Google-side revision history, comments and Google sharing. Google limits exports to about 10 MB, and larger files are marked failed and left untouched. Forms, scripts, sites and shortcuts cannot be moved.
+- Moved files get the same "anyone with the link" permission that uploads get, so existing link behaviour keeps working.
+- A file keeps its virtual folder when it moves. If that folder is tied to a particular drive, new uploads to that folder still go to that drive.
+- Drive allows duplicate names, so a moved file keeps its exact name even if the target already has a file called the same.
+
+**Files by type** (`/files-by-type`) lists files from all drives under tabs: All, Images, Videos, Audio, Documents, Spreadsheets, Presentations, Archives, Code, Other. Each tab shows its file count and total size. You can search, sort, filter by drive, switch between list and grid (grid shows image and video thumbnails), select several files for download, rename, delete or move, and page through large libraries. Files are classified by MIME type first, then by extension; edit the lists in `backend/src/modules/files/file-types.ts` to change the grouping.
+
+New API endpoints (all need a normal login): `GET /storage/overview`, `POST /storage/overview/refresh`, `POST /files/move-to-account`, `POST /storage/rebalance/plan`, `POST /storage/rebalance/execute`, `GET /jobs`, `GET /jobs/:id`, `POST /jobs/:id/cancel`, `POST /jobs/:id/retry`, `GET /files/by-type`, `GET /files/by-type/summary`, `POST /files/preview-tokens`.
+
+Migrations for these features are additive (`move_jobs`, `move_job_items`, and one index on `files`) and apply automatically when the backend starts. Back up the database first as with any upgrade.
+
+Tests: `cd backend && npm test` runs the unit tests (move rules, rebalance planner, file classification). `npx tsx src/scripts/test-move.ts full|native|cleanup` and `npx tsx src/scripts/test-file-types.ts` are live checks that create small throwaway files on your connected drives and remove them afterwards.
+
 ## Configuration
 
 <details>

@@ -44,3 +44,10 @@ Other scripts that `AGENTS.md` doesn't list:
 **Backend module style.** The backend is ESM with `module: NodeNext`, so relative imports need a `.js` suffix even in `.ts` files. Most route files hold their logic inline; services exist only for provider integrations (`google/`, `s3/`). Token encrypt/hash helpers are in `utils/crypto.ts`.
 
 **Frontend API base URL.** `lib/api.ts` uses `VITE_API_URL` unless it's unset or still the default `http://localhost:4000`. In that case a production build falls back to `/api`, which `frontend/nginx.conf` proxies to `backend:4000` with request buffering off so streamed uploads work. Upload queue and progress state live in `context/UploadContext.tsx`. The PWA service worker (`vite.config.ts`) has a `navigateFallbackDenylist` of backend path prefixes, so add any new top-level backend route there.
+
+## Cross-drive moves and file types (added later)
+
+- **Move jobs**: `modules/jobs/` (`job.service.ts` validates and creates jobs, `move-runner.ts` is the in-process worker started from `server.ts`, `move-logic.ts` holds the pure rules). Each `MoveJobItem` is a persisted step machine (`pending/copying -> copied -> db_updated -> done`) so restarts resume safely. `google/google-copy.ts` has the streamed copy, export and delete primitives. Never delete a source before the DB row points at a verified copy. Rebalance planning is pure code in `modules/storage/rebalance-plan.ts`.
+- **File types**: `modules/files/file-types.ts` is the only place categories are defined; it builds both the JS classifier and the Prisma `where` filters, so keep them in sync by editing the data, not the builders.
+- **Tests**: `cd backend && npm test` (node's test runner through tsx; add new test files to the `test` script). There is no Node on some dev hosts, so type-check by building the Docker images (`docker compose build backend frontend`). `src/scripts/test-move.ts` runs live against connected drives with throwaway files.
+- Frontend routes `/jobs`, `/files`, `/storage` etc. collide with the PWA `navigateFallbackDenylist`; the Jobs page therefore lives at `/move-jobs` and Files by Type at `/files-by-type`.

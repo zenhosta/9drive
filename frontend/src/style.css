@@ -410,3 +410,13 @@ aside .card button.text-orange-600:hover {
   color: #ff8787 !important;
   transform: translateY(-1px);
 }
+
+/* Respect the OS "reduce motion" setting (spinners, pulses, slide-ins). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
