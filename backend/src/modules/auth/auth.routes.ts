@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { google } from 'googleapis'
 import { z } from 'zod'
 import { prisma } from '../../config/prisma.js'
+import { getGlobalGoogleConfig } from '../google/google-config.js'
 import { env } from '../../config/env.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { hashPassword, verifyPassword } from '../../utils/password.js'
@@ -68,7 +69,7 @@ authRouter.post('/login', async (req, res, next) => {
 
 authRouter.get('/google/url', async (_req, res, next) => {
   try {
-    const config = await prisma.providerConfig.findFirstOrThrow({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
+    const config = await getGlobalGoogleConfig()
     const state = randomToken()
     await prisma.oauthState.create({ data: { providerConfigId: config.id, flow: 'login', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
     const client = createOAuthClient(config)

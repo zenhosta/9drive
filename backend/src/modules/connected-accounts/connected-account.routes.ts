@@ -3,6 +3,8 @@ import { google } from 'googleapis'
 import { z } from 'zod'
 import { env } from '../../config/env.js'
 import { prisma } from '../../config/prisma.js'
+import { getGlobalGoogleConfig } from '../google/google-config.js'
+import { HttpError } from '../../utils/http-error.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { decryptText, encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { hashPassword } from '../../utils/password.js'
@@ -66,7 +68,7 @@ async function createGoogleConnectUrl(req: AuthRequest) {
   const query = z.object({ providerConfigId: z.string().min(1).optional() }).parse(req.query)
   const config = query.providerConfigId
     ? await prisma.providerConfig.findFirstOrThrow({ where: { id: query.providerConfigId, OR: [{ userId: req.user!.id }, { userId: null }], provider: 'google_drive', status: 'active' } })
-    : await prisma.providerConfig.findFirstOrThrow({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
+    : await getGlobalGoogleConfig()
   const state = randomToken()
   await prisma.oauthState.create({ data: { userId: req.user!.id, providerConfigId: config.id, flow: 'connect', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
   const client = createOAuthClient(config)
@@ -149,7 +151,8 @@ connectedAccountRouter.post('/s3', requireAuth, async (req: AuthRequest, res, ne
       })
     } catch (error) {
       if (!existingAccount) await prisma.connectedAccount.delete({ where: { id: account.id } }).catch(() => undefined)
-      throw error
+      console.error('S3 connection test failed:', error instanceof Error ? error.message : error)
+      throw new HttpError(400, 'S3_CONNECTION_FAILED', 'Could not connect to the S3 bucket. Check the endpoint, bucket, region and credentials.')
     }
   } catch (error) {
     return next(error)
