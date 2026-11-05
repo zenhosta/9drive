@@ -2,12 +2,13 @@ import { Router } from 'express'
 import { google } from 'googleapis'
 import { z } from 'zod'
 import { prisma } from '../../config/prisma.js'
+import { getGlobalGoogleConfig } from '../google/google-config.js'
 import { env } from '../../config/env.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { hashPassword, verifyPassword } from '../../utils/password.js'
 import { encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { signAccessToken } from '../../utils/jwt.js'
-import { createOAuthClient, getGlobalGoogleConfig, syncGoogleQuota } from '../google/google.service.js'
+import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
 
 export const authRouter = Router()
 
