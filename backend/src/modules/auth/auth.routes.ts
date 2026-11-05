@@ -7,7 +7,7 @@ import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.
 import { hashPassword, verifyPassword } from '../../utils/password.js'
 import { encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { signAccessToken } from '../../utils/jwt.js'
-import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
+import { createOAuthClient, getGlobalGoogleConfig, syncGoogleQuota } from '../google/google.service.js'
 
 export const authRouter = Router()
 
@@ -68,7 +68,7 @@ authRouter.post('/login', async (req, res, next) => {
 
 authRouter.get('/google/url', async (_req, res, next) => {
   try {
-    const config = await prisma.providerConfig.findFirstOrThrow({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
+    const config = await getGlobalGoogleConfig()
     const state = randomToken()
     await prisma.oauthState.create({ data: { providerConfigId: config.id, flow: 'login', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
     const client = createOAuthClient(config)

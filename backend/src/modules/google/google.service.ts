@@ -2,12 +2,19 @@ import { google } from 'googleapis'
 import type { ConnectedAccount, ProviderConfig } from '@prisma/client'
 import { prisma } from '../../config/prisma.js'
 import { decryptText, encryptText } from '../../utils/crypto.js'
+import { HttpError } from '../../utils/http-error.js'
 
 const googleDriveFolderMimeType = 'application/vnd.google-apps.folder'
 const appFolderName = '9drive'
 
 export function createOAuthClient(config: ProviderConfig) {
   return new google.auth.OAuth2(decryptText(config.clientIdEncrypted), decryptText(config.clientSecretEncrypted), config.redirectUri)
+}
+
+export async function getGlobalGoogleConfig() {
+  const config = await prisma.providerConfig.findFirst({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
+  if (!config) throw new HttpError(503, 'GOOGLE_NOT_CONFIGURED', 'Google is not configured on this server. An administrator can add it in Settings.')
+  return config
 }
 
 export async function getAuthedGoogleClient(account: ConnectedAccount) {
