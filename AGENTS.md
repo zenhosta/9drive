@@ -61,6 +61,7 @@ Environment:
 - `JWT_ACCESS_SECRET`
 - `TOKEN_ENCRYPTION_KEY`
 - `RECAPTCHA_SECRET_KEY` (optional; enables captcha verification when paired with frontend site key)
+- `ALLOW_REGISTRATION` (optional, default `true`; `false` blocks new email and Google sign-ups except the first account)
 - `ACCESS_TOKEN_TTL_SECONDS`
 - `REFRESH_TOKEN_TTL_DAYS`
 - `MAX_UPLOAD_BYTES`
@@ -71,7 +72,7 @@ Environment:
 Backend conventions:
 - Put route logic under `backend/src/modules/<feature>/<feature>.routes.ts`.
 - Mount new routers in `backend/src/app.ts`.
-- Use `requireAuth` for authenticated routes.
+- Use `requireAuth` for authenticated routes, and add `requireAdmin` after it for instance-wide settings or maintenance (everything under `/system`).
 - Use `AuthRequest` when accessing `req.user`.
 - Validate request bodies/query params with Zod.
 - Use Prisma from `backend/src/config/prisma.ts`.

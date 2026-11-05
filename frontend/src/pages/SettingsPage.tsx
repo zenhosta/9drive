@@ -6,7 +6,7 @@ import { DummyModal } from '@/components/drive/DummyModal'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatBytes, API_URL } from '@/lib/api'
 import { getGravatarUrl } from '@/lib/gravatar'
-import { getStoredUser, getAccessToken, clearAuthSession } from '@/lib/auth'
+import { getStoredUser, getAccessToken, clearAuthSession, updateStoredUser, type AuthUser } from '@/lib/auth'
 
 type ConnectedAccount = { id: string; provider: string; email: string; displayName?: string | null; status: string; storageAccount?: { totalBytes: string | null; usedBytes: string; availableBytes: string | null; lastSyncedAt: string | null } | null }
 
@@ -27,6 +27,7 @@ function availableLabel(account: ConnectedAccount) {
 
 export function SettingsPage() {
   const user = getStoredUser()
+  const [isAdmin, setIsAdmin] = useState(user?.role === 'admin')
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [message, setMessage] = useState('')
   const [connecting, setConnecting] = useState(false)
@@ -241,6 +242,13 @@ export function SettingsPage() {
     const data = await apiFetch<{ accounts: ConnectedAccount[] }>('/connected-accounts')
     setAccounts(data.accounts)
 
+    // Instance-wide settings (Google credentials, updates, backup/restore) are admin-only.
+    const me = await apiFetch<{ user: AuthUser }>('/auth/me')
+    updateStoredUser(me.user)
+    const admin = me.user.role === 'admin'
+    setIsAdmin(admin)
+    if (!admin) return
+
     try {
       const configData = await apiFetch<{ exists: boolean; clientId: string; redirectUri: string; hasSecret: boolean; defaultRedirectUri: string }>('/system/google-config')
       if (configData.exists) {
@@ -415,6 +423,7 @@ export function SettingsPage() {
             </div>
           </Card>
 
+          {isAdmin && (<>
           <Card className="p-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
               <div className="flex items-center gap-2.5">
@@ -602,6 +611,7 @@ export function SettingsPage() {
               )}
             </div>
           </Card>
+          </>)}
         </div>
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 lg:gap-3">
           <Card className="p-4"><HardDrive className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Storage</h2><p className="mt-1 text-[12px] text-slate-500">Connected accounts: {accounts.length}</p></Card>
