@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LayoutGrid, List } from 'lucide-react'
+import { LayoutGrid, List, MoreVertical, type LucideIcon } from 'lucide-react'
 import { API_URL } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth'
 import { categoryStyle, type CategoryKey } from '@/lib/file-types'
@@ -108,11 +108,42 @@ export function Thumb({ file, small = false }: { file: IndexedRow; small?: boole
 
 /** Clearly labelled List / Grid switch. */
 export function ViewToggle({ view, onChange }: { view: 'list' | 'grid'; onChange: (v: 'list' | 'grid') => void }) {
-  const base = 'inline-flex h-9 items-center gap-1.5 px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+  const base = 'seg-btn inline-flex h-9 items-center gap-1.5 px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
   return (
     <div role="group" aria-label="View" className="inline-flex overflow-hidden rounded-xl border border-slate-300">
-      <button type="button" aria-pressed={view === 'list'} onClick={() => onChange('list')} className={cn(base, view === 'list' ? 'on-accent bg-blue-600' : 'bg-white hover:bg-slate-50')}><List className="h-4 w-4" aria-hidden />List</button>
-      <button type="button" aria-pressed={view === 'grid'} onClick={() => onChange('grid')} className={cn(base, 'border-l border-slate-300', view === 'grid' ? 'on-accent bg-blue-600' : 'bg-white hover:bg-slate-50')}><LayoutGrid className="h-4 w-4" aria-hidden />Grid</button>
+      <button type="button" aria-pressed={view === 'list'} onClick={() => onChange('list')} className={cn(base, view === 'list' ? 'seg-on' : '')}><List className="h-4 w-4" aria-hidden />List</button>
+      <button type="button" aria-pressed={view === 'grid'} onClick={() => onChange('grid')} className={cn(base, 'border-l border-slate-300', view === 'grid' ? 'seg-on' : '')}><LayoutGrid className="h-4 w-4" aria-hidden />Grid</button>
+    </div>
+  )
+}
+
+export type MenuAction = { label: string; icon: LucideIcon; onClick: () => void; danger?: boolean; href?: string }
+
+/** The "⋯" actions menu on every file and folder row: move, copy, delete, download. */
+export function RowMenu({ label, actions }: { label: string; actions: MenuAction[] }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return undefined
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
+  return (
+    <div ref={ref} className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
+      <button type="button" aria-label={`Actions for ${label}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><MoreVertical className="h-4 w-4" aria-hidden /></button>
+      {open ? (
+        <div role="menu" className="menu-pop absolute right-0 z-30 mt-1 w-52 rounded-xl p-1">
+          {actions.map((a) => {
+            const cls = cn('menu-item flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold', a.danger && 'menu-danger')
+            return a.href
+              ? <a key={a.label} role="menuitem" className={cls} href={a.href} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}><a.icon className="h-4 w-4" aria-hidden />{a.label}</a>
+              : <button key={a.label} role="menuitem" type="button" className={cls} onClick={() => { setOpen(false); a.onClick() }}><a.icon className="h-4 w-4" aria-hidden />{a.label}</button>
+          })}
+        </div>
+      ) : null}
     </div>
   )
 }

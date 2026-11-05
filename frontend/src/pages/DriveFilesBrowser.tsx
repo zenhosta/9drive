@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowRightLeft, CheckSquare, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, CheckSquare, Eye, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DeleteFilesDialog } from '@/components/drive/DeleteFilesDialog'
+import { canPreview, FileViewer } from '@/components/drive/FileViewer'
 import { MoveToDriveDialog, type MovableFile } from '@/components/drive/MoveToDriveDialog'
-import { badgeTone, downloadIndexedFile, driveName, googleDriveLink, Thumb, ViewToggle, type IndexedRow } from '@/components/drive/drive-bits'
+import { badgeTone, downloadIndexedFile, driveName, googleDriveLink, RowMenu, Thumb, ViewToggle, type IndexedRow, type MenuAction } from '@/components/drive/drive-bits'
 import { useJobs } from '@/context/JobsContext'
 import { useToast } from '@/context/ToastContext'
 import { apiFetch, formatBytes, formatDate } from '@/lib/api'
@@ -52,6 +53,7 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
   const [dialog, setDialog] = useState<'move' | 'copy' | null>(null)
   const [busy, setBusy] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [viewing, setViewing] = useState<number | null>(null)
   const [selectingAll, setSelectingAll] = useState(false)
   const requestId = useRef(0)
   const autoScanned = useRef(false)
@@ -155,6 +157,8 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
     if (next.has(key)) next.delete(key); else next.set(key, { key, kind: 'folder', folder, accountId })
     return next
   })
+  // In the merged "All drives" view a folder stands for that path on every drive that has it.
+  const folderDrives = (sel: Selection) => (sel.accountId ? [sel.accountId] : scan.map((s) => s.accountId))
   const toggleAllFiles = () => setSelected((prev) => {
     const next = new Map(prev)
     for (const f of files) {
@@ -165,7 +169,7 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
   })
 
   const totalFilesInView = (browse ?? search)?.total ?? 0
-  const everythingSelected = selected.size > 0 && selected.size >= totalFilesInView + (explorer ? folders.length : 0)
+  const everythingSelected = selected.size > 0 && selected.size >= totalFilesInView + folders.length
   const selectedFolders = selectedList.filter((s) => s.kind === 'folder')
   const deleteFileCount = selectedList.filter((s) => s.kind === 'file').length + selectedFolders.reduce((n, s) => n + (s.folder?.count ?? 0), 0)
 
@@ -174,7 +178,7 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
     setSelectingAll(true)
     try {
       const next = new Map<string, Selection>()
-      if (explorer) for (const f of folders) next.set(`d:${f.path}`, { key: `d:${f.path}`, kind: 'folder', folder: f, accountId })
+      for (const f of folders) next.set(`d:${f.path}`, { key: `d:${f.path}`, kind: 'folder', folder: f, accountId })
       let pageNo = 1
       let pages = 1
       do {
@@ -211,7 +215,7 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
         method: 'POST',
         body: JSON.stringify({
           driveItemIds: selectedList.filter((s) => s.kind === 'file').map((s) => s.file!.id),
-          folders: selectedFolders.map((s) => ({ accountId: s.accountId, path: s.folder!.path })),
+          folders: selectedFolders.flatMap((s) => folderDrives(s).map((id) => ({ accountId: id, path: s.folder!.path }))),
           permanent,
         }),
       })
@@ -227,8 +231,32 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
   }
 
   const movable: MovableFile[] = selectedList.map((s) => s.kind === 'folder'
-    ? { id: s.folder!.path, kind: 'folder' as const, path: s.folder!.path, count: s.folder!.count, name: s.folder!.name, sizeBytes: s.folder!.sizeBytes, accountId: s.accountId }
+    ? { id: s.folder!.path, kind: 'folder' as const, path: s.folder!.path, count: s.folder!.count, name: s.folder!.name, sizeBytes: s.folder!.sizeBytes, accountId: s.accountId, accountIds: folderDrives(s) }
     : { id: s.file!.id, kind: 'drive' as const, name: s.file!.name, mimeType: s.file!.mimeType, sizeBytes: s.file!.sizeBytes, accountId: s.accountId })
+
+  const previewable = useMemo(() => files.filter(canPreview), [files])
+  const openViewer = (file: IndexedRow) => { const i = previewable.findIndex((f) => f.id === file.id); if (i >= 0) setViewing(i) }
+  /** Double-click: preview what the viewer can show, otherwise open the file in Google Drive. */
+  const openFile = (file: IndexedRow) => {
+    if (canPreview(file)) openViewer(file)
+    else window.open(googleDriveLink(file), '_blank', 'noopener')
+  }
+  const actOn = (sel: Selection, action: 'move' | 'copy' | 'delete') => {
+    setSelected(new Map([[sel.key, sel]]))
+    if (action === 'delete') setDeleteOpen(true); else setDialog(action)
+  }
+  const rowActions = (sel: Selection): MenuAction[] => [
+    ...(sel.kind === 'file' && canPreview(sel.file!) ? [{ label: 'Preview', icon: Eye, onClick: () => openViewer(sel.file!) }] : []),
+    { label: 'Move to drive…', icon: ArrowRightLeft, onClick: () => actOn(sel, 'move') },
+    { label: 'Copy to drive…', icon: Copy, onClick: () => actOn(sel, 'copy') },
+    ...(sel.kind === 'file' ? [
+      { label: 'Download', icon: Download, onClick: () => { downloadIndexedFile(sel.file!.id, sel.file!.name).catch((e) => toast.error(e instanceof Error ? e.message : 'Download failed')) } },
+      { label: 'Open in Google Drive', icon: ExternalLink, href: googleDriveLink(sel.file!), onClick: () => undefined },
+    ] : []),
+    { label: 'Delete…', icon: Trash2, danger: true, onClick: () => actOn(sel, 'delete') },
+  ]
+  const fileSel = (f: IndexedRow): Selection => ({ key: `f:${f.id}`, kind: 'file', file: f, accountId: f.connectedAccountId })
+  const folderSel = (f: FolderEntry): Selection => ({ key: `d:${f.path}`, kind: 'folder', folder: f, accountId })
 
   const empty = !loading && files.length === 0 && folders.length === 0
   const single = selectedList.length === 1 && selectedList[0].kind === 'file' ? selectedList[0].file! : null
@@ -277,17 +305,16 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
       {scanning ? <p role="status" className="mt-2 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">Reading your drives: {scan.reduce((s, a) => s + (a.status === 'running' ? a.itemsFound : 0), 0).toLocaleString()} files found so far. This page fills in as it goes.</p> : null}
       {scanProblem ? <p role="alert" className="mt-2 rounded-xl bg-red-50 p-3 text-sm t-bad">Scan of {scanProblem.email} failed: {scanProblem.error ?? 'unknown error'} <button className="ml-2 font-bold underline" onClick={rescan}>Retry</button></p> : null}
 
-      {selectedList.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3" role="toolbar" aria-label="Selection actions">
-          <span className="text-sm font-extrabold text-blue-900">{selectedList.length.toLocaleString()} selected · {formatBytes(selectedBytes)}</span>
-          <Button size="sm" onClick={() => setDialog('move')}><ArrowRightLeft className="h-4 w-4" />Move to drive</Button>
-          <Button size="sm" variant="outline" onClick={() => setDialog('copy')}><Copy className="h-4 w-4" />Copy to drive</Button>
-          <Button size="sm" variant="danger" onClick={() => setDeleteOpen(true)}><Trash2 className="h-4 w-4" />Delete</Button>
-          {single ? <Button variant="outline" size="sm" disabled={busy} onClick={async () => { setBusy(true); try { await downloadIndexedFile(single.id, single.name) } catch (e) { toast.error(e instanceof Error ? e.message : 'Download failed') } finally { setBusy(false) } }}><Download className="h-4 w-4" />Download</Button> : null}
-          {single ? <a className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold hover:bg-slate-50" target="_blank" rel="noreferrer" href={googleDriveLink(single)}><ExternalLink className="h-4 w-4" />Open in Google Drive</a> : null}
-          <Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>Clear</Button>
-        </div>
-      ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 p-3" role="toolbar" aria-label="Actions for selected files">
+        <span className="text-sm font-extrabold text-blue-900">{selectedList.length > 0 ? `${selectedList.length.toLocaleString()} selected · ${formatBytes(selectedBytes)}` : 'Nothing selected'}</span>
+        {selectedList.length === 0 ? <span className="text-xs text-slate-500">Tick files or folders (folders include everything inside them), or use a row's ⋯ menu, to move, copy or delete.</span> : null}
+        <Button size="sm" onClick={() => setDialog('move')} disabled={selectedList.length === 0}><ArrowRightLeft className="h-4 w-4" />Move to drive</Button>
+        <Button size="sm" variant="outline" onClick={() => setDialog('copy')} disabled={selectedList.length === 0}><Copy className="h-4 w-4" />Copy to drive</Button>
+        <Button size="sm" variant="danger" onClick={() => setDeleteOpen(true)} disabled={selectedList.length === 0}><Trash2 className="h-4 w-4" />Delete</Button>
+        {single ? <Button variant="outline" size="sm" disabled={busy} onClick={async () => { setBusy(true); try { await downloadIndexedFile(single.id, single.name) } catch (e) { toast.error(e instanceof Error ? e.message : 'Download failed') } finally { setBusy(false) } }}><Download className="h-4 w-4" />Download</Button> : null}
+        {single ? <a className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold hover:bg-slate-50" target="_blank" rel="noreferrer" href={googleDriveLink(single)}><ExternalLink className="h-4 w-4" />Open in Google Drive</a> : null}
+        {selectedList.length > 0 ? <Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>Clear</Button> : null}
+      </div>
 
       {error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm t-bad">{error}</p> : null}
 
@@ -301,22 +328,24 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
         ) : view === 'grid' ? (
           <div className={cn('grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5', loading && 'opacity-60')}>
             {folders.map((f) => (
-              <Card key={f.path} className={cn('p-3', selected.has(`d:${f.path}`) && 'ring-2 ring-blue-500')}>
+              <Card key={f.path} className={cn('select-none p-3', selected.has(`d:${f.path}`) && 'ring-2 ring-blue-500')} onDoubleClick={() => goFolder(f.path)} title="Double-click to open">
                 <div className="relative">
                   <button className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1 rounded-xl bg-amber-50 hover:bg-amber-100" onClick={() => goFolder(f.path)} aria-label={`Open folder ${f.name}`}>
                     <Folder className="h-14 w-14 text-amber-500" aria-hidden />
                   </button>
-                  {explorer ? <input type="checkbox" className="absolute left-2 top-2 h-4 w-4" aria-label={`Select folder ${f.name}`} checked={selected.has(`d:${f.path}`)} onChange={() => toggleFolder(f)} /> : null}
+                  <input type="checkbox" className="absolute left-2 top-2 h-4 w-4" aria-label={`Select folder ${f.name}`} checked={selected.has(`d:${f.path}`)} onChange={() => toggleFolder(f)} />
+                  <div className="card-menu absolute right-1 top-1"><RowMenu label={f.name} actions={rowActions(folderSel(f))} /></div>
                 </div>
                 <p className="mt-2 truncate text-sm font-bold" title={f.name}>{f.name}</p>
                 <p className="text-xs text-slate-500">{f.count.toLocaleString()} files · {formatBytes(f.sizeBytes)}</p>
               </Card>
             ))}
             {files.map((file) => (
-              <Card key={file.id} className={cn('p-3', selected.has(`f:${file.id}`) && 'ring-2 ring-blue-500')}>
+              <Card key={file.id} className={cn('select-none p-3', selected.has(`f:${file.id}`) && 'ring-2 ring-blue-500')} onDoubleClick={() => openFile(file)} title="Double-click to open">
                 <div className="relative">
-                  <Thumb file={file} />
+                  {canPreview(file) ? <button type="button" className="block w-full" onClick={() => openViewer(file)} aria-label={`Preview ${file.name}`}><Thumb file={file} /></button> : <Thumb file={file} />}
                   <input type="checkbox" className="absolute left-2 top-2 h-4 w-4" aria-label={`Select ${file.name}`} checked={selected.has(`f:${file.id}`)} onChange={() => toggleFile(file)} />
+                  <div className="card-menu absolute right-1 top-1"><RowMenu label={file.name} actions={rowActions(fileSel(file))} /></div>
                 </div>
                 <p className="mt-2 truncate text-sm font-bold" title={file.name}>{file.name}</p>
                 <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500"><span>{formatBytes(file.sizeBytes)}</span>{explorer ? null : <span className={cn('truncate', badgeTone(file.connectedAccountId))} title={file.connectedAccount.email}>{driveName(file.connectedAccount)}</span>}</div>
@@ -329,27 +358,29 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
               <thead className="border-b border-slate-100 text-xs text-slate-500">
                 <tr>
                   <th className="w-10 py-3 pl-4"><input type="checkbox" aria-label="Select all files in this view" checked={allFilesOnPage} onChange={toggleAllFiles} disabled={files.length === 0} /></th>
-                  <th className="py-3 pr-3 font-semibold">Name</th>{q ? <th className="py-3 pr-3 font-semibold">Folder</th> : null}{explorer ? null : <th className="py-3 pr-3 font-semibold">Drive</th>}<th className="py-3 pr-3 text-right font-semibold">Size</th><th className="py-3 pr-4 font-semibold">Modified</th>
+                  <th className="py-3 pr-3 font-semibold">Name</th>{q ? <th className="py-3 pr-3 font-semibold">Folder</th> : null}{explorer ? null : <th className="py-3 pr-3 font-semibold">Drive</th>}<th className="py-3 pr-3 text-right font-semibold">Size</th><th className="py-3 pr-4 font-semibold">Modified</th><th className="w-12 py-3 pr-3"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
                 {folders.map((f) => (
-                  <tr key={f.path} className={cn('cursor-pointer border-t border-slate-100 hover:bg-slate-50', selected.has(`d:${f.path}`) && 'bg-blue-50/60')} onClick={() => goFolder(f.path)}>
-                    <td className="py-2.5 pl-4" onClick={(e) => e.stopPropagation()}>{explorer ? <input type="checkbox" aria-label={`Select folder ${f.name}`} checked={selected.has(`d:${f.path}`)} onChange={() => toggleFolder(f)} /> : null}</td>
+                  <tr key={f.path} className={cn('cursor-pointer border-t border-slate-100 hover:bg-slate-50', selected.has(`d:${f.path}`) && 'row-selected')} onClick={() => goFolder(f.path)}>
+                    <td className="py-2.5 pl-4" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`Select folder ${f.name}`} checked={selected.has(`d:${f.path}`)} onChange={() => toggleFolder(f)} /></td>
                     <td className="max-w-[22rem] py-2.5 pr-3"><button className="flex w-full items-center gap-3 text-left" onClick={(e) => { e.stopPropagation(); goFolder(f.path) }}><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 t-warn"><Folder className="h-4 w-4" aria-hidden /></span><span className="truncate font-semibold">{f.name}</span><span className="shrink-0 text-xs text-slate-500">{f.count.toLocaleString()} file{f.count === 1 ? '' : 's'}</span></button></td>
                     {q ? <td /> : null}{explorer ? null : <td />}
                     <td className="whitespace-nowrap py-2.5 pr-3 text-right text-slate-500">{formatBytes(f.sizeBytes)}</td>
                     <td className="py-2.5 pr-4 text-slate-400">—</td>
+                    <td className="py-2.5 pr-3"><RowMenu label={f.name} actions={rowActions(folderSel(f))} /></td>
                   </tr>
                 ))}
                 {files.map((file) => (
-                  <tr key={file.id} className={cn('border-t border-slate-100 hover:bg-slate-50', selected.has(`f:${file.id}`) && 'bg-blue-50/60')}>
+                  <tr key={file.id} className={cn('select-none border-t border-slate-100 hover:bg-slate-50', selected.has(`f:${file.id}`) && 'row-selected')} onDoubleClick={() => openFile(file)} title="Double-click to open">
                     <td className="py-2.5 pl-4"><input type="checkbox" aria-label={`Select ${file.name}`} checked={selected.has(`f:${file.id}`)} onChange={() => toggleFile(file)} /></td>
-                    <td className="max-w-[22rem] py-2.5 pr-3"><div className="flex items-center gap-3"><Thumb file={file} small /><span className="truncate font-semibold" title={file.name}>{file.name}</span></div></td>
+                    <td className="max-w-[22rem] py-2.5 pr-3">{canPreview(file) ? <button type="button" className="flex w-full min-w-0 items-center gap-3 text-left" onClick={() => openViewer(file)} title="Preview"><Thumb file={file} small /><span className="truncate font-semibold hover:underline">{file.name}</span></button> : <div className="flex items-center gap-3"><Thumb file={file} small /><span className="truncate font-semibold" title={file.name}>{file.name}</span></div>}</td>
                     {q ? <td className="max-w-[14rem] truncate py-2.5 pr-3 text-slate-500" title={file.path}>{file.path.replace(/^My Drive\/?/, '') || 'My Drive'}</td> : null}
                     {explorer ? null : <td className="py-2.5 pr-3"><span className={badgeTone(file.connectedAccountId)} title={file.connectedAccount.email}>{driveName(file.connectedAccount)}</span></td>}
                     <td className="whitespace-nowrap py-2.5 pr-3 text-right text-slate-500">{formatBytes(file.sizeBytes)}</td>
                     <td className="whitespace-nowrap py-2.5 pr-4 text-slate-500">{file.modifiedAt ? formatDate(file.modifiedAt) : '—'}</td>
+                    <td className="py-2.5 pr-3"><RowMenu label={file.name} actions={rowActions(fileSel(file))} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -358,7 +389,7 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
         )}
       </div>
 
-      {!explorer && !accountId && !q ? <p className="mt-3 text-xs text-slate-500">Tip: click a drive above to open it like Google Drive and move or copy whole folders.</p> : null}
+      {!explorer && !accountId && !q ? <p className="mt-3 text-xs text-slate-500">Tip: click a drive above to open it like Google Drive. Selecting a folder here moves or copies it from every drive that has it.</p> : null}
 
       {totalPages > 1 ? (
         <nav className="mt-4 flex items-center justify-between gap-3" aria-label="Pagination">
@@ -370,6 +401,7 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
         </nav>
       ) : null}
 
+      {viewing !== null ? <FileViewer files={previewable} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} /> : null}
       <DeleteFilesDialog open={deleteOpen} fileCount={deleteFileCount} folderCount={selectedFolders.length} bytes={selectedBytes} busy={busy} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
       <MoveToDriveDialog
         open={dialog !== null}

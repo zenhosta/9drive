@@ -475,3 +475,70 @@ aside .card button.text-orange-600:hover {
 :root.dark .t-bad { color: #fca5a5 !important; }
 :root.dark .t-link { color: #93c5fd !important; }
 :root.dark .t-violet { color: #c4b5fd !important; }
+
+/* Selected rows/cards: a tint that stays readable in both themes (replaces bg-blue-50/60, which turned light grey in dark mode). */
+.row-selected { background-color: rgba(37, 99, 235, 0.09) !important; }
+:root.dark .row-selected { background-color: rgba(96, 165, 250, 0.18) !important; }
+
+/* List / Grid switch */
+.seg-btn { background: #fff; color: #334155 !important; }
+.seg-btn:hover { background: #f1f5f9; }
+:root.dark .seg-btn { background: rgba(255, 255, 255, 0.06); color: #e2e8f0 !important; }
+:root.dark .seg-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.seg-btn.seg-on, .seg-btn.seg-on:hover { background: #2563eb; color: #fff !important; }
+:root.dark .seg-btn.seg-on, :root.dark .seg-btn.seg-on:hover { background: #3b5bdb; color: #fff !important; }
+
+/* Ghost/secondary buttons use text-slate-700/800, which the dark theme never remapped (nearly invisible "Clear" etc.). */
+:root.dark .text-slate-700, :root.dark .text-slate-800 { color: var(--text-primary) !important; }
+:root.dark button.cursor-not-allowed, :root.dark button:disabled.text-slate-400 { color: #8b97ab !important; }
+.on-accent .on-accent-muted { color: rgba(255, 255, 255, 0.95) !important; }
+
+/* Disabled sidebar entry and dimmed options: keep them legible (they were ~3:1 in dark mode). */
+:root.dark button.cursor-not-allowed { color: #aab4c5 !important; opacity: 0.8 !important; }
+:root:not(.dark) button.cursor-not-allowed { opacity: 0.7 !important; }
+.menu-pop { background: #fff; border: 1px solid #cbd5e1; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18); }
+:root.dark .menu-pop { background: #151c30; border-color: rgba(255, 255, 255, 0.14); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); }
+.menu-item { color: #0f172a !important; }
+.menu-item:hover { background: #f1f5f9; }
+:root.dark .menu-item { color: #e2e8f0 !important; }
+:root.dark .menu-item:hover { background: rgba(255, 255, 255, 0.09); }
+.menu-item.menu-danger { color: #b91c1c !important; }
+:root.dark .menu-item.menu-danger { color: #fca5a5 !important; }
+
+.card-menu { background: rgba(255, 255, 255, 0.92); border-radius: 0.5rem; color: #0f172a; }
+.card-menu button { color: inherit; }
+:root.dark .card-menu { background: rgba(15, 20, 35, 0.85); color: #e2e8f0; }
+
+/* Full-screen viewer controls */
+.viewer-btn { background: rgba(255, 255, 255, 0.14); }
+.viewer-btn:hover { background: rgba(255, 255, 255, 0.26); }
+
+/* ---------- Dark mode: light panels, small buttons and notices that were never themed ---------- */
+/* Opacity variants such as bg-slate-50/80 are different class names, so the plain overrides above never matched them. */
+:root.dark [class*="bg-slate-50/"], :root.dark [class*="bg-slate-100/"], :root.dark [class*="bg-white/"] { background-color: var(--slate-50-override) !important; }
+:root.dark [class*="bg-blue-50/"] { background-color: var(--blue-bg-override) !important; }
+
+/* Small tinted buttons (Copy Link, Move, ...) */
+:root.dark button.bg-slate-50, :root.dark button.bg-slate-100, :root.dark button.bg-slate-200,
+:root.dark button.bg-blue-50, :root.dark button.bg-emerald-50, :root.dark button.bg-red-50 { color: var(--text-primary) !important; }
+:root.dark button.bg-blue-50 { color: #bfdbfe !important; }
+
+/* Orange / yellow notices */
+:root.dark .bg-orange-50, :root.dark .bg-orange-100, :root.dark .bg-yellow-50, :root.dark .bg-yellow-100 { background-color: rgba(251, 146, 60, 0.16) !important; }
+:root.dark .bg-orange-50, :root.dark .bg-orange-50 *, :root.dark .bg-orange-100, :root.dark .bg-orange-100 *,
+:root.dark .bg-yellow-50, :root.dark .bg-yellow-50 *, :root.dark .bg-yellow-100, :root.dark .bg-yellow-100 * { color: #fed7aa !important; }
+:root.dark .border-orange-200 { border-color: rgba(251, 146, 60, 0.35) !important; }
+
+/* Danger buttons (Delete, Log out...) and disabled buttons must stay readable on dark backgrounds. */
+:root.dark button.text-orange-600, :root.dark .text-orange-600 { color: #fdba74 !important; }
+:root.dark button.hover\:bg-orange-50:hover { background-color: rgba(251, 146, 60, 0.18) !important; }
+:root.dark button:disabled { opacity: 0.7 !important; }
+:root:not(.dark) button:disabled { opacity: 0.55 !important; }
+
+/* Final contrast touches (measured in a real browser). */
+:root:not(.dark) button.text-orange-600, :root:not(.dark) .text-orange-600 { color: #c2410c !important; }
+:root:not(.dark) button:disabled.cursor-not-allowed, :root:not(.dark) button.cursor-not-allowed { color: #64748b !important; opacity: 0.9 !important; }
+:root.dark button:disabled.cursor-not-allowed, :root.dark button.cursor-not-allowed { color: #b8c2d3 !important; opacity: 0.9 !important; }
+
+:root:not(.dark) button:disabled { opacity: 0.72 !important; }
+:root:not(.dark) button:disabled.cursor-not-allowed, :root:not(.dark) button.cursor-not-allowed { color: #475569 !important; opacity: 1 !important; }

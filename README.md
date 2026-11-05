@@ -283,7 +283,9 @@ Good to know:
 
 - **Move to drive** or **Copy to drive** (a copy leaves the original). Folders keep their structure: moving or copying `Photos` creates `Photos/...` in the destination and merges into a folder that already has that name. Only files are transferred, so empty folders are not recreated.
 - **Delete**, either to the Drive trash (recoverable in Google Drive for 30 days, still counts toward storage until emptied) or permanently, after a confirmation. Deleting a folder deletes the files inside it and leaves the empty folder. Deletes run as jobs with progress, cancel and retry.
+- **Preview**: double-click a file (or click its name or thumbnail, or use the row's ⋯ menu) to open a full-screen viewer for images, video, audio and PDFs (Google Docs/Sheets/Slides show as PDF), with previous/next (←/→) and Esc to close. Other file types open in Google Drive. Preview links are signed, expire after 20 minutes and work only for that file.
 - Download a single file, or open it in Google Drive.
+- Every row and folder card has a **⋯** menu (Preview, Move, Copy, Download, Open in Google Drive, Delete). The Move / Copy / Delete buttons stay visible above the list and enable once something is selected.
 
 When you move files, the dialog lets you pick the **destination folder** in the target drive: the default `9drive` folder, any existing folder (click through the tree), or a new folder you create at the current level (including inside another folder). Sync Drive no longer marks a 9Drive-tracked file as deleted just because it sits outside the `9drive` folder; it asks Drive whether the file still exists. Files that 9Drive already tracks keep their share links and virtual folder. The rebalance wizard also uses this index, so "free up 5 GB" can pick from every file on the drive; it asks you to scan the source drive first. Owned file sizes do not exactly match Google's quota number (Gmail, Photos, trash and revisions count there), so a plan can free less or more than the number it shows.
 
@@ -293,7 +295,24 @@ New API endpoints (all need a normal login): `GET /storage/overview`, `POST /sto
 
 Migrations for these features are additive (`move_jobs`, `move_job_items` with `target_subpath`, `drive_items`, `drive_scans`, one index on `files`, and `move_job_items.file_id` becomes nullable) and apply automatically when the backend starts. Back up the database first as with any upgrade.
 
+**Thumbnail cache.** Thumbnails are kept on the backend's disk (`/tmp/9drive-thumbs`) so scrolling does not re-download them from Google. An entry is deleted after 7 days without use, the cache never exceeds 1 GiB (the least recently used entries are deleted first and the recent ones are kept), and a file's thumbnail is dropped when the file is deleted or moved. Tune with `THUMB_CACHE_MAX_MB` and `THUMB_CACHE_TTL_DAYS`; the cache is safe to lose.
+
+**Updates show up on their own.** nginx no longer lets browsers cache the app shell (`index.html`, `sw.js`), and the app reloads once when a new version is installed. The sidebar shows the build time so you can tell which version you are on.
+
 Tests: `cd backend && npm test` runs the unit tests (move rules, rebalance planner, file classification). `npx tsx src/scripts/test-move.ts full|native|index|scan-all|cleanup` and `npx tsx src/scripts/test-drive-api.ts` and `npx tsx src/scripts/test-file-types.ts` are live checks that create small throwaway files on your connected drives and remove them afterwards.
+
+## Starting 9Drive from any terminal (`9drive`)
+
+`scripts/9drive` starts the whole app with one word and opens it in your browser, from any folder:
+
+```bash
+./scripts/install-cli.sh   # once; links it into ~/.local/bin and adds that folder to PATH in ~/.bashrc
+9drive                     # start (if needed) and open http://localhost:5173
+9drive stop                # stop; your data is kept
+9drive status | logs | restart | rebuild | open | help
+```
+
+It runs `docker compose up -d` in the project folder (override with `NINEDRIVE_HOME`), waits until the backend answers, then opens the browser (`wslview` or `explorer.exe` on WSL, `xdg-open` elsewhere). Use `9drive --no-open` to skip the browser. It never runs `docker compose down -v`, so the database is never wiped. If Docker isn't running it tries `sudo -n service docker start` and otherwise tells you what to start.
 
 ## Configuration
 

@@ -191,6 +191,7 @@ function Sidebar({ onNavigate, user, storage, breakdown, onLogout }: { onNavigat
         <Button variant="danger" size="sm" className="mt-3 w-full justify-start h-10 px-3 text-[13px] font-bold" onClick={onLogout}>
           <LogOut className="h-4 w-4" />Log Out
         </Button>
+        <p className="mt-2 text-center text-[10px] text-slate-500" title="If this date looks old, refresh the page">Build {__BUILD_ID__}</p>
       </div>
     </aside>
   )

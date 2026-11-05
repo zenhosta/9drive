@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import type { ConnectedAccount, MoveJobItem } from '@prisma/client'
 import { retryOnLock } from '../drive-index/drive-scan.js'
+import { dropThumb } from '../drive-index/thumb-cache.js'
 import { prisma } from '../../config/prisma.js'
 import { createAuditLog } from '../../utils/audit.js'
 import { deleteDriveFile, driveFor, ensureSubfolders, exportToBuffer, findCopyByItem, getFileMeta, makePublicWriter, streamCopy, trashDriveFile, uploadBuffer } from '../google/google-copy.js'
@@ -171,6 +172,7 @@ async function runDeleteItem(item: ItemWithJob) {
     await prisma.driveItem.deleteMany({ where: { connectedAccountId: item.sourceAccountId, providerFileId: item.sourceProviderFileId } })
     await prisma.file.deleteMany({ where: { userId, connectedAccountId: item.sourceAccountId, providerFileId: item.sourceProviderFileId } })
   })
+  await dropThumb(item.sourceAccountId, item.sourceProviderFileId)
   await prisma.moveJobItem.update({ where: { id: item.id }, data: { status: 'done', step: 'done', error: null } })
   log('item deleted', { itemId: item.id, permanent: Boolean(options.permanent) })
 }
@@ -222,6 +224,7 @@ async function runItem(item: ItemWithJob) {
   if (step === 'db_updated') {
     // A copy leaves the original where it is.
     const note = options.operation === 'copy' ? null : await deleteSourceStep(item, source)
+    if (options.operation !== 'copy') await dropThumb(item.sourceAccountId, item.sourceProviderFileId)
     await prisma.moveJobItem.update({ where: { id: item.id }, data: { status: 'done', step: 'done', error: null, ...(note ? { note } : {}) } })
     log('item done', { itemId: item.id, fileId: item.fileId })
   }

@@ -8,7 +8,7 @@ import { apiFetch, formatBytes } from '@/lib/api'
 import { usageBarClass, usageLevel, usagePercent } from '@/lib/storage-thresholds'
 import { cn } from '@/lib/utils'
 
-export type MovableFile = { id: string; kind?: 'file' | 'drive' | 'folder'; path?: string; count?: number; name: string; mimeType?: string; sizeBytes?: string; accountId?: string }
+export type MovableFile = { id: string; kind?: 'file' | 'drive' | 'folder'; path?: string; count?: number; accountIds?: string[]; name: string; mimeType?: string; sizeBytes?: string; accountId?: string }
 type OverviewAccount = { id: string; provider: string; email: string; displayName: string | null; totalBytes: string | null; usedBytes: string; availableBytes: string | null; unlimited: boolean }
 type MoveResponse = { jobId: string; accepted: number; skipped: Array<{ fileId: string; name: string; reason: string }>; warnings: string[] }
 
@@ -46,7 +46,7 @@ export function MoveToDriveDialog({ open, files, operation = 'move', preselectSo
   const movable = useMemo(() => files.filter((f) => f.kind === 'folder' || includeNative || !isNative(f.mimeType)), [files, includeNative])
 
   const rows = useMemo(() => accounts.map((account) => {
-    const toMove = movable.filter((f) => f.accountId !== account.id)
+    const toMove = movable.filter((f) => (f.accountIds ? !(f.accountIds.length === 1 && f.accountIds[0] === account.id) : f.accountId !== account.id))
     const bytes = toMove.reduce((sum, f) => sum + (isNative(f.mimeType) ? 0 : Number(f.sizeBytes ?? 0)), 0)
     const free = account.availableBytes === null ? Infinity : Number(account.availableBytes)
     const allHere = movable.length > 0 && toMove.length === 0
@@ -66,7 +66,7 @@ export function MoveToDriveDialog({ open, files, operation = 'move', preselectSo
     setSubmitting(true)
     setError('')
     try {
-      const data = await apiFetch<MoveResponse>('/files/move-to-account', { method: 'POST', body: JSON.stringify({ fileIds: files.filter((f) => !f.kind || f.kind === 'file').map((f) => f.id), driveItemIds: files.filter((f) => f.kind === 'drive').map((f) => f.id), folders: files.filter((f) => f.kind === 'folder' && f.path && f.accountId).map((f) => ({ accountId: f.accountId, path: f.path })), targetAccountId: targetId, targetFolderId: folder?.id, operation, includeNative, nativeFormat }) })
+      const data = await apiFetch<MoveResponse>('/files/move-to-account', { method: 'POST', body: JSON.stringify({ fileIds: files.filter((f) => !f.kind || f.kind === 'file').map((f) => f.id), driveItemIds: files.filter((f) => f.kind === 'drive').map((f) => f.id), folders: files.filter((f) => f.kind === 'folder' && f.path).flatMap((f) => (f.accountIds ?? (f.accountId ? [f.accountId] : [])).map((accountId) => ({ accountId, path: f.path! }))), targetAccountId: targetId, targetFolderId: folder?.id, operation, includeNative, nativeFormat }) })
       await refresh()
       onStarted?.(data.jobId)
       if (data.skipped.length === 0 && data.warnings.length === 0) onClose()
@@ -110,7 +110,7 @@ export function MoveToDriveDialog({ open, files, operation = 'move', preselectSo
                 const percent = usagePercent(account.usedBytes, account.totalBytes)
                 const Icon = account.provider === 's3' ? Database : Cloud
                 return (
-                  <label key={account.id} className={cn('flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm', targetId === account.id ? 'border-blue-500 bg-blue-50/60' : 'border-slate-200', disabled && 'cursor-not-allowed opacity-50')}>
+                  <label key={account.id} className={cn('flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm', targetId === account.id ? 'border-blue-500 row-selected' : 'border-slate-200', disabled && 'cursor-not-allowed opacity-85')}>
                     <input type="radio" name="target-drive" className="h-4 w-4" checked={targetId === account.id} disabled={disabled} onChange={() => setTargetId(account.id)} />
                     <Icon className="h-5 w-5 shrink-0 t-link" />
                     <div className="min-w-0 flex-1">

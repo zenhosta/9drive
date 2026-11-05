@@ -12,6 +12,7 @@ import { prisma } from '../config/prisma.js'
 import { createFolder, listChildFolders } from '../modules/google/google-copy.js'
 import { ensureGoogleAppFolder, getAuthedGoogleClient, syncGoogleAppFolderFiles, syncGoogleQuota } from '../modules/google/google.service.js'
 import { indexTrackedFile } from '../modules/drive-index/drive-scan.js'
+import { thumbCache } from '../modules/drive-index/thumb-cache.js'
 import { signAccessToken } from '../utils/jwt.js'
 import { hashToken } from '../utils/crypto.js'
 
@@ -203,6 +204,19 @@ async function main() {
     if (img) {
       const t = await fetch(`${base}/drive-index/${img.id}/thumb`, { headers })
       check('thumbnail is served for a large photo (>4 MB)', t.status === 200 && (t.headers.get('content-type') ?? '').startsWith('image/') && (await t.arrayBuffer()).byteLength > 500, `${t.status} ${t.headers.get('content-type')}`)
+    }
+    if (img) {
+      const stats = await thumbCache.stats()
+      check('thumbnail was stored in the disk cache', stats.count >= 1 && stats.bytes > 0, `${stats.count} files, ${stats.bytes} bytes`)
+      const again = await fetch(`${base}/drive-index/${img.id}/thumb`, { headers })
+      check('second request is served (from cache)', again.status === 200 && (await again.arrayBuffer()).byteLength > 500)
+      // viewer link: short-lived, file-bound, loads without the login header
+      const vu = await api(`/drive-index/${img.id}/view-url`)
+      check('view-url returns a signed link', vu.status === 200 && String(vu.body.path).startsWith('/drive-view/'), String(vu.body.path).slice(0, 20))
+      const view = await fetch(`${base}${vu.body.path}`)
+      check('the signed link streams the image without a login header', view.status === 200 && (view.headers.get('content-type') ?? '').startsWith('image/') && (await view.arrayBuffer()).byteLength > 1000, `${view.status} ${view.headers.get('content-type')}`)
+      const bad = await fetch(`${base}/drive-view/not-a-real-token`)
+      check('a tampered link is rejected', bad.status === 401, `${bad.status}`)
     }
     const noAuth = await fetch(`${base}/drive-index/${img?.id ?? 'x'}/thumb`)
     check('thumbnail requires login', noAuth.status === 401)

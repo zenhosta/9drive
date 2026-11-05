@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# 9drive: start, stop and open your local 9Drive app from any folder.
+#
+#   9drive            start 9Drive (if it isn't running) and open it in your browser
+#   9drive stop       stop it (your data is kept)
+#   9drive restart    stop and start again
+#   9drive status     show what is running
+#   9drive logs       follow the backend log (Ctrl+C to leave)
+#   9drive rebuild    rebuild the images after you changed the code, then start
+#   9drive open       just open the browser
+#   9drive --no-open  start without opening the browser
+#
+# It never deletes data: it does not use "docker compose down -v".
+set -uo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+REPO="${NINEDRIVE_HOME:-$(cd "$(dirname "$SELF")/.." && pwd)}"
+URL="${NINEDRIVE_URL:-http://localhost:5173}"
+HEALTH="${NINEDRIVE_HEALTH_URL:-http://localhost:4000/health}"
+OPEN=1
+
+say() { printf '\033[1m%s\033[0m\n' "$*"; }
+warn() { printf '\033[33m%s\033[0m\n' "$*" >&2; }
+die() { printf '\033[31m%s\033[0m\n' "$*" >&2; exit 1; }
+
+[ -f "$REPO/docker-compose.yml" ] || die "Can't find the 9Drive folder (looked in $REPO). Set NINEDRIVE_HOME to the folder that contains docker-compose.yml."
+
+dc() { (cd "$REPO" && docker compose "$@"); }
+
+ensure_docker() {
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed. Install Docker (or Docker Desktop with WSL integration) first."
+  docker info >/dev/null 2>&1 && return 0
+  warn "Docker isn't running. Trying to start it..."
+  sudo -n service docker start >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do docker info >/dev/null 2>&1 && return 0; sleep 1; done
+  die "Docker is not running. Start Docker Desktop, or run:  sudo service docker start   then run 9drive again."
+}
+
+open_browser() {
+  [ "$OPEN" = 1 ] && [ -z "${NINEDRIVE_NO_OPEN:-}" ] || return 0
+  if command -v wslview >/dev/null 2>&1; then wslview "$URL" >/dev/null 2>&1 &
+  elif command -v explorer.exe >/dev/null 2>&1; then explorer.exe "$URL" >/dev/null 2>&1 &
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$URL" >/dev/null 2>&1 &
+  else echo "Open $URL in your browser."; fi
+  return 0
+}
+
+wait_ready() {
+  printf 'Waiting for 9Drive to be ready'
+  for _ in $(seq 1 90); do
+    if curl -fsS -m 2 "$HEALTH" >/dev/null 2>&1; then printf '\n'; return 0; fi
+    printf '.'; sleep 1
+  done
+  printf '\n'
+  return 1
+}
+
+start() {
+  ensure_docker
+  say "Starting 9Drive from $REPO"
+  dc up -d || die "docker compose could not start 9Drive. Run '9drive logs' to see why."
+  if wait_ready; then
+    say "9Drive is running at $URL"
+    open_browser
+  else
+    warn "It started but is not answering yet. Check '9drive logs'. It may still be applying a database update; try $URL in a minute."
+  fi
+}
+
+cmd="${1:-start}"
+if [ "$cmd" = "--no-open" ]; then OPEN=0; cmd="start"; fi
+case "$cmd" in
+  start|up) [ "${2:-}" = "--no-open" ] && OPEN=0; start ;;
+  stop|down) ensure_docker; dc stop && say "9Drive stopped. Your data is kept; run '9drive' to start it again." ;;
+  restart) ensure_docker; dc stop; start ;;
+  status|ps) ensure_docker; dc ps; if curl -fsS -m 2 "$HEALTH" >/dev/null 2>&1; then say "Backend is healthy. App: $URL"; else warn "Backend is not answering."; fi ;;
+  logs) ensure_docker; dc logs -f --tail=100 backend ;;
+  rebuild) ensure_docker; say "Rebuilding (this can take a few minutes)..."; dc up -d --build || die "Build failed."; wait_ready && say "9Drive is running at $URL" && open_browser ;;
+  open) open_browser; echo "$URL" ;;
+  help|-h|--help) sed -n '2,15p' "$SELF" | sed 's/^# \{0,1\}//' ;;
+  *) die "Unknown command '$cmd'. Try: 9drive help" ;;
+esac

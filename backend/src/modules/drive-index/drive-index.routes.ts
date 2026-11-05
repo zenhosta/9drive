@@ -1,4 +1,6 @@
 import { Router } from 'express'
+import jwt from 'jsonwebtoken'
+import { env } from '../../config/env.js'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../../config/prisma.js'
@@ -8,12 +10,15 @@ import { streamGoogleFile } from '../files/stream-google-file.js'
 import { getAuthedGoogleClient } from '../google/google.service.js'
 import { createFolder, listChildFolders, resolveFolder } from '../google/google-copy.js'
 import { withBackoff } from '../google/backoff.js'
+import { ThumbCache, thumbCache } from './thumb-cache.js'
 import { google } from 'googleapis'
 import { createDeleteJob, expandFolders, JobRequestError } from '../jobs/job.service.js'
 import { createAuditLog } from '../../utils/audit.js'
 import { isScanRunning, startScans } from './drive-scan.js'
 
 export const driveIndexRouter = Router()
+// Short-lived, file-bound links so <img>, <video> and <iframe> can load a file without sending the login header.
+export const driveViewRouter = Router()
 driveIndexRouter.use(requireAuth)
 
 const MB = 1024 * 1024
@@ -247,6 +252,13 @@ const thumbLinkCache = new Map<string, { link: string | null; at: number }>()
 driveIndexRouter.get('/:id/thumb', async (req: AuthRequest, res, next) => {
   try {
     const item = await prisma.driveItem.findFirstOrThrow({ where: { id: String(req.params.id), userId: req.user!.id }, include: { connectedAccount: true } })
+    const cacheKey = ThumbCache.key(item.connectedAccountId, item.providerFileId)
+    const cached = await thumbCache.get(cacheKey).catch(() => null)
+    if (cached) {
+      res.setHeader('Content-Type', cached.type)
+      res.setHeader('Cache-Control', 'private, max-age=3600')
+      return res.send(cached.data)
+    }
     const auth = await getAuthedGoogleClient(item.connectedAccount)
     let entry = thumbLinkCache.get(item.id)
     if (!entry || Date.now() - entry.at > 20 * 60_000) {
@@ -259,9 +271,39 @@ driveIndexRouter.get('/:id/thumb', async (req: AuthRequest, res, next) => {
     const headers = await auth.getRequestHeaders()
     const image = await fetch(entry.link, { headers: headers instanceof Headers ? Object.fromEntries(headers.entries()) : (headers as Record<string, string>) })
     if (!image.ok) { thumbLinkCache.delete(item.id); return res.status(404).json({ code: 'NO_THUMBNAIL', message: 'Thumbnail unavailable.' }) }
-    res.setHeader('Content-Type', image.headers.get('content-type') ?? 'image/jpeg')
+    const data = Buffer.from(await image.arrayBuffer())
+    const type = image.headers.get('content-type') ?? 'image/jpeg'
+    await thumbCache.put(cacheKey, data, type).catch(() => undefined)
+    res.setHeader('Content-Type', type)
     res.setHeader('Cache-Control', 'private, max-age=3600')
-    return res.send(Buffer.from(await image.arrayBuffer()))
+    return res.send(data)
+  } catch (error) {
+    return next(error)
+  }
+})
+
+driveIndexRouter.get('/:id/view-url', async (req: AuthRequest, res, next) => {
+  try {
+    const item = await prisma.driveItem.findFirstOrThrow({ where: { id: String(req.params.id), userId: req.user!.id }, select: { id: true, name: true, mimeType: true } })
+    const token = jwt.sign({ typ: 'drive-view', sub: item.id }, env.JWT_ACCESS_SECRET, { expiresIn: '20m' })
+    return res.json({ path: `/drive-view/${token}`, name: item.name, mimeType: item.mimeType })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+driveViewRouter.get('/:token', async (req, res, next) => {
+  try {
+    let payload: { typ?: string; sub?: string }
+    try {
+      payload = jwt.verify(String(req.params.token), env.JWT_ACCESS_SECRET) as { typ?: string; sub?: string }
+    } catch {
+      return res.status(401).json({ code: 'VIEW_LINK_EXPIRED', message: 'This preview link has expired. Reopen the file.' })
+    }
+    if (payload.typ !== 'drive-view' || !payload.sub) return res.status(401).json({ code: 'VIEW_LINK_INVALID', message: 'Invalid preview link.' })
+    const item = await prisma.driveItem.findUnique({ where: { id: payload.sub }, include: { connectedAccount: true } })
+    if (!item || item.connectedAccount.status !== 'connected') return res.status(404).json({ code: 'NOT_FOUND', message: 'File not found.' })
+    return streamGoogleFile(item as unknown as Parameters<typeof streamGoogleFile>[0] & { providerFileId: string }, req.headers.range, res, { disposition: 'inline' })
   } catch (error) {
     return next(error)
   }
