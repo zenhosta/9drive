@@ -19,11 +19,12 @@ type Plan = {
   shortfallBytes: string
   nativeExcluded: number
   warnings: string[]
-  items: Array<{ fileId: string; name: string; sizeBytes: string; targetAccountId: string; targetEmail?: string }>
-  unplaced: Array<{ fileId: string; name: string; sizeBytes: string }>
+  items: Array<{ driveItemId: string; name: string; sizeBytes: string; targetAccountId: string; targetEmail?: string }>
+  unplaced: Array<{ driveItemId: string; name: string; sizeBytes: string }>
   accounts: PlanAccount[]
 }
 type Mode = 'amount' | 'percent'
+type ScanInfo = { accountId: string; status: string; itemsFound: number; indexedCount: number; error: string | null }
 
 const GB = 1024 ** 3
 const steps = ['Source', 'Options', 'Review plan', 'Progress']
@@ -70,6 +71,7 @@ export function RebalancePage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [job, setJob] = useState<MoveJob | null>(null)
+  const [scans, setScans] = useState<ScanInfo[]>([])
 
   useEffect(() => {
     apiFetch<{ accounts: Account[] }>('/storage/overview')
@@ -83,6 +85,27 @@ export function RebalancePage() {
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const loadScans = async () => {
+    try { setScans((await apiFetch<{ accounts: ScanInfo[] }>('/drive-index/scan')).accounts) } catch { /* shown on build */ }
+  }
+  useEffect(() => { loadScans() }, [])
+  const sourceScan = scans.find((s) => s.accountId === sourceId)
+  const scanRunning = sourceScan?.status === 'running'
+  useEffect(() => {
+    if (!scanRunning) return undefined
+    const t = window.setInterval(loadScans, 2000)
+    return () => window.clearInterval(t)
+  }, [scanRunning])
+
+  async function scanSource() {
+    try {
+      await apiFetch('/drive-index/scan', { method: 'POST', body: JSON.stringify({ accountIds: [sourceId] }) })
+      await loadScans()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not start the scan')
+    }
+  }
 
   const source = accounts.find((a) => a.id === sourceId)
   const others = useMemo(() => accounts.filter((a) => a.id !== sourceId), [accounts, sourceId])
@@ -110,7 +133,7 @@ export function RebalancePage() {
     setBusy(true)
     setError('')
     try {
-      const result = await apiFetch<{ jobId: string }>('/storage/rebalance/execute', { method: 'POST', body: JSON.stringify({ sourceAccountId: plan.sourceAccountId, items: plan.items.map((i) => ({ fileId: i.fileId, targetAccountId: i.targetAccountId })) }) })
+      const result = await apiFetch<{ jobId: string }>('/storage/rebalance/execute', { method: 'POST', body: JSON.stringify({ sourceAccountId: plan.sourceAccountId, items: plan.items.map((i) => ({ driveItemId: i.driveItemId, targetAccountId: i.targetAccountId })) }) })
       await refresh()
       setJob((await apiFetch<{ job: MoveJob }>(`/jobs/${result.jobId}`)).job)
       setStep(3)
@@ -142,7 +165,7 @@ export function RebalancePage() {
   }
 
   const validAmount = mode === 'amount' ? Number(amountGb) > 0 : Number(percent) >= 1 && Number(percent) <= 99
-  const canPlan = Boolean(source) && validAmount && (autoTargets || targetIds.length > 0)
+  const canPlan = Boolean(source) && validAmount && (autoTargets || targetIds.length > 0) && sourceScan?.status === 'done'
 
   return (
     <>
@@ -181,6 +204,11 @@ export function RebalancePage() {
             <p className="text-sm text-slate-500">Moving files out of</p>
             <p className="font-extrabold">{source.email} <button className="ml-2 text-xs font-semibold text-blue-600 underline" onClick={() => setStep(0)}>change</button></p>
           </div>
+          <div className={cn('rounded-xl p-3 text-sm', sourceScan?.status === 'done' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900')} role="status">
+            {sourceScan?.status === 'done' ? `${sourceScan.indexedCount.toLocaleString()} files on this drive are indexed and can be moved.` : scanRunning ? `Scanning this drive... ${sourceScan?.itemsFound.toLocaleString() ?? 0} files found so far.` : 'This drive has not been scanned yet, so 9Drive does not know which files are on it.'}
+            {sourceScan?.status !== 'done' && !scanRunning ? <Button className="ml-3" size="sm" variant="soft" onClick={scanSource}>Scan this drive</Button> : null}
+            {sourceScan?.status === 'done' ? <button className="ml-3 font-bold underline" onClick={scanSource}>Rescan</button> : null}
+          </div>
           <fieldset className="grid gap-3">
             <legend className="mb-1 text-sm font-semibold">How much should be freed?</legend>
             <label className="flex flex-wrap items-center gap-3 text-sm"><input type="radio" name="mode" checked={mode === 'amount'} onChange={() => setMode('amount')} />Free up<input className="h-10 w-28 rounded-xl border border-slate-200 px-3" inputMode="decimal" aria-label="Gigabytes to free" value={amountGb} onChange={(e) => setAmountGb(e.target.value)} disabled={mode !== 'amount'} />GB</label>
@@ -215,7 +243,7 @@ export function RebalancePage() {
             <h3 className="font-extrabold">Files to move</h3>
             <table className="mt-3 w-full min-w-[30rem] text-left text-sm">
               <thead className="text-xs text-slate-500"><tr><th className="py-2 pr-3 font-semibold">File</th><th className="py-2 pr-3 font-semibold">Size</th><th className="py-2 font-semibold">Moves to</th></tr></thead>
-              <tbody>{plan.items.slice(0, 100).map((i) => <tr key={i.fileId} className="border-t border-slate-100"><td className="max-w-[18rem] truncate py-2 pr-3 font-semibold" title={i.name}>{i.name}</td><td className="py-2 pr-3 text-slate-500">{formatBytes(i.sizeBytes)}</td><td className="py-2 text-slate-500">{i.targetEmail}</td></tr>)}</tbody>
+              <tbody>{plan.items.slice(0, 100).map((i) => <tr key={i.driveItemId} className="border-t border-slate-100"><td className="max-w-[18rem] truncate py-2 pr-3 font-semibold" title={i.name}>{i.name}</td><td className="py-2 pr-3 text-slate-500">{formatBytes(i.sizeBytes)}</td><td className="py-2 text-slate-500">{i.targetEmail}</td></tr>)}</tbody>
             </table>
             {plan.items.length > 100 ? <p className="mt-2 text-xs text-slate-500">…and {plan.items.length - 100} more.</p> : null}
           </Card>

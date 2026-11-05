@@ -245,7 +245,10 @@ storageRouter.post('/rebalance/plan', async (req: AuthRequest, res, next) => {
     const planSource = toPlanAccount(freshSource)
     if (body.targetUsedPercent !== undefined && !planSource.totalBytes) return res.status(400).json({ code: 'PLAN_INVALID', message: 'This drive has no known capacity, so a target percentage cannot be used. Enter an amount to free instead.' })
 
-    const files = await prisma.file.findMany({ where: { userId, connectedAccountId: source.id, provider: 'google_drive', status: 'active' }, select: { id: true, name: true, sizeBytes: true, mimeType: true } })
+    // The plan is built from the drive index so it sees every file in the drive, not only the 9drive folder.
+    const scan = await prisma.driveScan.findUnique({ where: { connectedAccountId: source.id } })
+    if (!scan || scan.status !== 'done') return res.status(409).json({ code: 'NOT_SCANNED', message: `Scan ${source.email} first so 9Drive knows which files are on it.` })
+    const files = await prisma.driveItem.findMany({ where: { userId, connectedAccountId: source.id }, select: { id: true, name: true, sizeBytes: true, mimeType: true } })
     const plan = buildPlan({
       source: planSource,
       targets: freshTargets.map(toPlanAccount),
@@ -256,7 +259,7 @@ storageRouter.post('/rebalance/plan', async (req: AuthRequest, res, next) => {
     if (quotaFailures.length > 0) plan.warnings.unshift(`Could not refresh quota for: ${quotaFailures.join(', ')}. Numbers for those drives may be out of date.`)
     // Drive usage includes things 9Drive doesn't track; the plan can only move files 9Drive knows about.
     const knownBytes = files.reduce((s, f) => s + f.sizeBytes, 0n)
-    if (plan.needBytes > knownBytes) plan.warnings.push('You asked to free more than the files 9Drive tracks on this drive. Run "Sync Drive" in All Files if files were added outside 9Drive.')
+    if (plan.needBytes > knownBytes) plan.warnings.push('You asked to free more than the files you own on this drive. The rest of the used space may be Drive trash, other Google services (Gmail, Photos) or files owned by others.')
 
     const emailById = new Map([freshSource, ...freshTargets].map((a) => [a.id, a.email]))
     return res.json({
@@ -266,8 +269,8 @@ storageRouter.post('/rebalance/plan', async (req: AuthRequest, res, next) => {
       shortfallBytes: plan.shortfallBytes.toString(),
       nativeExcluded: plan.nativeExcluded,
       warnings: plan.warnings,
-      items: plan.items.map((i) => ({ fileId: i.fileId, name: i.name, sizeBytes: i.sizeBytes.toString(), targetAccountId: i.targetAccountId, targetEmail: emailById.get(i.targetAccountId) })),
-      unplaced: plan.unplaced.map((u) => ({ ...u, sizeBytes: u.sizeBytes.toString() })),
+      items: plan.items.map((i) => ({ driveItemId: i.fileId, name: i.name, sizeBytes: i.sizeBytes.toString(), targetAccountId: i.targetAccountId, targetEmail: emailById.get(i.targetAccountId) })),
+      unplaced: plan.unplaced.map((u) => ({ driveItemId: u.fileId, name: u.name, sizeBytes: u.sizeBytes.toString() })),
       accounts: plan.accounts.map((a) => ({
         id: a.id, email: a.email, role: a.id === source.id ? 'source' : 'target',
         totalBytes: a.totalBytes?.toString() ?? null, usedBefore: a.usedBefore.toString(), usedAfter: a.usedAfter.toString(),
@@ -282,7 +285,7 @@ storageRouter.post('/rebalance/plan', async (req: AuthRequest, res, next) => {
 
 const executeSchema = z.object({
   sourceAccountId: z.string().min(1),
-  items: z.array(z.object({ fileId: z.string().min(1), targetAccountId: z.string().min(1) })).min(1).max(5000),
+  items: z.array(z.object({ driveItemId: z.string().min(1), targetAccountId: z.string().min(1) })).min(1).max(5000),
 })
 
 // The plan is not trusted: every file, account and the free space is re-validated when the job is created.

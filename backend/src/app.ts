@@ -15,6 +15,7 @@ import { apiKeyRouter } from './modules/api-keys/api-key.routes.js'
 import { publicApiRouter } from './modules/public-api/public-api.routes.js'
 import { auditLogRouter } from './modules/audit-logs/audit-log.routes.js'
 import { jobRouter } from './modules/jobs/job.routes.js'
+import { driveIndexRouter } from './modules/drive-index/drive-index.routes.js'
 import { systemRouter } from './modules/system/system.routes.js'
 
 export const app = express()
@@ -37,5 +38,6 @@ app.use('/folders', folderRouter)
 app.use('/invites', inviteRouter)
 app.use('/audit-logs', auditLogRouter)
 app.use('/jobs', jobRouter)
+app.use('/drive-index', driveIndexRouter)
 app.use('/system', systemRouter)
 app.use(errorMiddleware)

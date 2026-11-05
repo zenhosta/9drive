@@ -1,10 +1,10 @@
-import type { ConnectedAccount, File, MoveJobItem } from '@prisma/client'
+import type { ConnectedAccount, MoveJobItem } from '@prisma/client'
 import { prisma } from '../../config/prisma.js'
 import { createAuditLog } from '../../utils/audit.js'
 import { deleteDriveFile, driveFor, exportToBuffer, findCopyByItem, getFileMeta, makePublicWriter, streamCopy, trashDriveFile, uploadBuffer } from '../google/google-copy.js'
+import { withBackoff } from '../google/backoff.js'
 import { ensureGoogleAppFolder, syncGoogleQuota } from '../google/google.service.js'
 import {
-  backoffDelayMs,
   classifyDriveError,
   computeJobStatus,
   isNativeGoogleMime,
@@ -34,6 +34,21 @@ const POLL_MS = 3000
 type JobOptions = { includeNative?: boolean; nativeFormat?: 'native' | 'office' }
 type ItemWithJob = MoveJobItem & { job: { id: string; userId: string; options: unknown } }
 
+/** What is being moved: either a 9Drive file row or a row from the Drive index. */
+type Subject = { name: string; mimeType: string; accountId: string; providerFileId: string; active: boolean }
+
+async function loadSubject(item: { fileId: string | null; driveItemId: string | null }, userId: string): Promise<Subject | null> {
+  if (item.fileId) {
+    const f = await prisma.file.findFirst({ where: { id: item.fileId, userId } })
+    return f ? { name: f.name, mimeType: f.mimeType, accountId: f.connectedAccountId, providerFileId: f.providerFileId, active: f.status === 'active' } : null
+  }
+  if (item.driveItemId) {
+    const d = await prisma.driveItem.findFirst({ where: { id: item.driveItemId, userId } })
+    return d ? { name: d.name, mimeType: d.mimeType, accountId: d.connectedAccountId, providerFileId: d.providerFileId, active: true } : null
+  }
+  return null
+}
+
 class ItemFailure extends Error {}
 class ItemCancelled extends Error {}
 
@@ -42,7 +57,6 @@ let pumping = false
 let started = false
 const reservedByTarget = new Map<string, bigint>()
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const log = (message: string, meta?: Record<string, unknown>) => console.info('[move]', message, meta ?? '')
 
 export async function startMoveRunner() {
@@ -97,19 +111,6 @@ async function claimNext(): Promise<ItemWithJob | null> {
   return item
 }
 
-async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      return await fn()
-    } catch (error) {
-      const c = classifyDriveError(error)
-      if (!c.retryable || attempt >= 5) throw error
-      log('retrying after transient error', { attempt: attempt + 1, status: c.status, reason: c.reason })
-      await sleep(backoffDelayMs(attempt))
-    }
-  }
-}
-
 function friendly(error: unknown) {
   const c = classifyDriveError(error)
   if (c.reason === 'storageQuotaExceeded') return 'The target drive is out of storage space.'
@@ -161,18 +162,18 @@ async function runItem(item: ItemWithJob) {
   const source = await loadAccount(item.sourceAccountId, userId)
   const target = await loadAccount(item.targetAccountId, userId)
 
-  let file = await prisma.file.findFirst({ where: { id: item.fileId, userId } })
-  if (!file) throw new ItemFailure('The file no longer exists in 9Drive.')
+  let file = await loadSubject(item, userId)
+  if (!file) throw new ItemFailure('The file no longer exists (it was removed or the drive index was rescanned).')
 
   // The DB row may already point at the copy if we crashed right after the update but before saving the step.
-  if (targetId && file.connectedAccountId === item.targetAccountId && file.providerFileId === targetId && step !== 'db_updated') {
+  if (targetId && file.accountId === item.targetAccountId && file.providerFileId === targetId && step !== 'db_updated') {
     step = 'db_updated'
     await setItem(item.id, { step })
   }
 
   if (step === 'pending' || step === 'copying') {
     if (!source || !target) throw new ItemFailure('Source or target drive is no longer connected.')
-    if (file.status !== 'active' || file.connectedAccountId !== item.sourceAccountId || file.providerFileId !== item.sourceProviderFileId) {
+    if (!file.active || file.accountId !== item.sourceAccountId || file.providerFileId !== item.sourceProviderFileId) {
       throw new ItemFailure('The file was changed, moved or deleted after the job was created.')
     }
     if (await isCancelled(item.jobId)) throw new ItemCancelled()
@@ -183,7 +184,8 @@ async function runItem(item: ItemWithJob) {
 
   if (step === 'copied') {
     if (!source || !target || !targetId) throw new ItemFailure('Source or target drive is no longer connected.')
-    file = await prisma.file.findFirstOrThrow({ where: { id: item.fileId, userId } })
+    file = await loadSubject(item, userId)
+    if (!file) throw new ItemFailure('The file no longer exists.')
     if (await isCancelled(item.jobId)) throw new ItemCancelled()
     await verifyAndSwitch(item, file, source, target, targetId, options)
     await setItem(item.id, { step: 'db_updated' })
@@ -197,7 +199,7 @@ async function runItem(item: ItemWithJob) {
   }
 }
 
-async function copyStep(item: ItemWithJob, file: File, source: ConnectedAccount, target: ConnectedAccount, options: JobOptions): Promise<string> {
+async function copyStep(item: ItemWithJob, file: Subject, source: ConnectedAccount, target: ConnectedAccount, options: JobOptions): Promise<string> {
   const { drive: sourceDrive } = await driveFor(source)
   const { drive: targetDrive } = await driveFor(target)
 
@@ -264,7 +266,7 @@ function releaseTargetSpace(targetId: string, bytes: bigint) {
   else reservedByTarget.delete(targetId)
 }
 
-async function verifyAndSwitch(item: ItemWithJob, file: File, source: ConnectedAccount, target: ConnectedAccount, targetId: string, options: JobOptions) {
+async function verifyAndSwitch(item: ItemWithJob, file: Subject, source: ConnectedAccount, target: ConnectedAccount, targetId: string, options: JobOptions) {
   const { drive: sourceDrive } = await driveFor(source)
   const { drive: targetDrive } = await driveFor(target)
   const sourceMeta = await withBackoff(() => getFileMeta(sourceDrive, item.sourceProviderFileId))
@@ -288,15 +290,30 @@ async function verifyAndSwitch(item: ItemWithJob, file: File, source: ConnectedA
   }
   if (problem) throw new ItemFailure(`Verification failed, original kept: ${problem}`)
 
-  // Re-point the 9Drive row at the copy. The WHERE guards make this idempotent and safe against concurrent edits.
-  const updated = await prisma.file.updateMany({
-    where: { id: file.id, status: 'active', connectedAccountId: item.sourceAccountId, providerFileId: item.sourceProviderFileId },
-    data: { connectedAccountId: item.targetAccountId, providerFileId: targetId, ...(targetMeta.md5Checksum ? { checksum: targetMeta.md5Checksum } : {}), ...dbChanges },
-  })
-  if (updated.count !== 1) throw new ItemFailure('The file was changed or deleted while it was being moved; the original was kept.')
+  // Re-point the records at the copy. The WHERE guards make this idempotent and safe against concurrent edits.
+  const switched = await switchRecords(item, targetId, targetMeta.md5Checksum ?? null, dbChanges)
+  if (!switched) throw new ItemFailure('The file was changed or deleted while it was being moved; the original was kept.')
 
   // Match upload behaviour: files are shared as "anyone with the link" so view-url links keep working. Best effort.
   await makePublicWriter(targetDrive, targetId).catch((error) => log('could not set public permission on moved file', { itemId: item.id, message: error instanceof Error ? error.message : String(error) }))
+}
+
+async function switchRecords(item: ItemWithJob, targetId: string, md5: string | null, changes: { name?: string; mimeType?: string; sizeBytes?: bigint }) {
+  let fileOk = true
+  if (item.fileId) {
+    const updated = await prisma.file.updateMany({
+      where: { id: item.fileId, status: 'active', connectedAccountId: item.sourceAccountId, providerFileId: item.sourceProviderFileId },
+      data: { connectedAccountId: item.targetAccountId, providerFileId: targetId, ...(md5 ? { checksum: md5 } : {}), ...changes },
+    })
+    fileOk = updated.count === 1
+  }
+  if (!fileOk) return false
+  // The drive index row (if any) follows the file; files copied in land in the target's 9drive folder.
+  const indexed = await prisma.driveItem.updateMany({
+    where: { connectedAccountId: item.sourceAccountId, providerFileId: item.sourceProviderFileId },
+    data: { connectedAccountId: item.targetAccountId, providerFileId: targetId, path: 'My Drive/9drive', ...(md5 ? { md5 } : {}), ...changes },
+  })
+  return item.fileId ? true : indexed.count === 1
 }
 
 async function deleteSourceStep(item: ItemWithJob, source: ConnectedAccount | null): Promise<string | null> {
@@ -320,14 +337,14 @@ async function deleteSourceStep(item: ItemWithJob, source: ConnectedAccount | nu
 /** Removes a partial/unused copy on the target. Never touches a copy the DB row already points at. */
 async function cleanupTarget(item: MoveJobItem) {
   try {
-    const current = await prisma.moveJobItem.findUnique({ where: { id: item.id } })
+    const current = await prisma.moveJobItem.findUnique({ where: { id: item.id }, include: { job: { select: { userId: true } } } })
     if (!current || current.step === 'db_updated' || current.step === 'done') return
-    const file = await prisma.file.findUnique({ where: { id: item.fileId }, select: { providerFileId: true } })
+    const subject = await loadSubject(current, current.job.userId)
     const target = await prisma.connectedAccount.findUnique({ where: { id: item.targetAccountId } })
     if (!target || target.status !== 'connected') return
     const { drive } = await driveFor(target)
     const copyId = current.targetProviderFileId ?? (await findCopyByItem(drive, item.id).catch(() => null))
-    if (copyId && file?.providerFileId !== copyId) {
+    if (copyId && subject?.providerFileId !== copyId) {
       await deleteDriveFile(drive, copyId).catch((error) => {
         if (classifyDriveError(error).status !== 404) throw error
       })

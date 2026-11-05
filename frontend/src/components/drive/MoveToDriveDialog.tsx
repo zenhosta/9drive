@@ -7,7 +7,7 @@ import { apiFetch, formatBytes } from '@/lib/api'
 import { usageBarClass, usageLevel, usagePercent } from '@/lib/storage-thresholds'
 import { cn } from '@/lib/utils'
 
-export type MovableFile = { id: string; name: string; mimeType?: string; sizeBytes?: string; accountId?: string }
+export type MovableFile = { id: string; kind?: 'file' | 'drive'; name: string; mimeType?: string; sizeBytes?: string; accountId?: string }
 type OverviewAccount = { id: string; provider: string; email: string; displayName: string | null; totalBytes: string | null; usedBytes: string; availableBytes: string | null; unlimited: boolean }
 type MoveResponse = { jobId: string; accepted: number; skipped: Array<{ fileId: string; name: string; reason: string }>; warnings: string[] }
 
@@ -61,7 +61,7 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
     setSubmitting(true)
     setError('')
     try {
-      const data = await apiFetch<MoveResponse>('/files/move-to-account', { method: 'POST', body: JSON.stringify({ fileIds: files.map((f) => f.id), targetAccountId: targetId, includeNative, nativeFormat }) })
+      const data = await apiFetch<MoveResponse>('/files/move-to-account', { method: 'POST', body: JSON.stringify({ fileIds: files.filter((f) => f.kind !== 'drive').map((f) => f.id), driveItemIds: files.filter((f) => f.kind === 'drive').map((f) => f.id), targetAccountId: targetId, includeNative, nativeFormat }) })
       await refresh()
       onStarted?.(data.jobId)
       if (data.skipped.length === 0 && data.warnings.length === 0) onClose()

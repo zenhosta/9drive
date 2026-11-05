@@ -271,13 +271,21 @@ Good to know:
 - A file keeps its virtual folder when it moves. If that folder is tied to a particular drive, new uploads to that folder still go to that drive.
 - Drive allows duplicate names, so a moved file keeps its exact name even if the target already has a file called the same.
 
-**Files by type** (`/files-by-type`) lists files from all drives under tabs: All, Images, Videos, Audio, Documents, Spreadsheets, Presentations, Archives, Code, Other. Each tab shows its file count and total size. You can search, sort, filter by drive, switch between list and grid (grid shows image and video thumbnails), select several files for download, rename, delete or move, and page through large libraries. Files are classified by MIME type first, then by extension; edit the lists in `backend/src/modules/files/file-types.ts` to change the grouping.
+**Files by type** (`/files-by-type`) is a file browser for the whole of every connected Google Drive, not just the `9drive` folder. Click **Scan drives** once (and again whenever files change outside 9Drive). The scan reads names, sizes, MIME types and folder paths of every file you own and stores them in the `drive_items` table; it downloads nothing and skips files that only live in someone else's Drive. Then you can:
 
-New API endpoints (all need a normal login): `GET /storage/overview`, `POST /storage/overview/refresh`, `POST /files/move-to-account`, `POST /storage/rebalance/plan`, `POST /storage/rebalance/execute`, `GET /jobs`, `GET /jobs/:id`, `POST /jobs/:id/cancel`, `POST /jobs/:id/retry`, `GET /files/by-type`, `GET /files/by-type/summary`, `POST /files/preview-tokens`.
+- pick a drive chip to see only that drive (each chip shows its file count and size), and pick a type tab: All, Images, Videos, Audio, Documents, Spreadsheets, Presentations, Archives, Code, Other (counts and sizes per tab);
+- search by name or folder, filter by minimum size, sort by size, name, date or folder, and switch between list and grid (image thumbnails load lazily for small images);
+- tick files, or use **Select the largest files totalling N GB** (within the current drive and type filters), then **Move to drive**. Download and *Open in Google Drive* work on a single file.
 
-Migrations for these features are additive (`move_jobs`, `move_job_items`, and one index on `files`) and apply automatically when the backend starts. Back up the database first as with any upgrade.
+Files that sit outside the `9drive` folder are copied into the target drive's `9drive` folder, so they lose their old folder path (the dialog says so). Files that 9Drive already tracks keep their share links and virtual folder. The rebalance wizard also uses this index, so "free up 5 GB" can pick from every file on the drive; it asks you to scan the source drive first. Owned file sizes do not exactly match Google's quota number (Gmail, Photos, trash and revisions count there), so a plan can free less or more than the number it shows.
 
-Tests: `cd backend && npm test` runs the unit tests (move rules, rebalance planner, file classification). `npx tsx src/scripts/test-move.ts full|native|cleanup` and `npx tsx src/scripts/test-file-types.ts` are live checks that create small throwaway files on your connected drives and remove them afterwards.
+Files are classified by MIME type first, then by extension; edit the lists in `backend/src/modules/files/file-types.ts` to change the grouping.
+
+New API endpoints (all need a normal login): `GET /storage/overview`, `POST /storage/overview/refresh`, `POST /files/move-to-account`, `POST /storage/rebalance/plan`, `POST /storage/rebalance/execute`, `GET /jobs`, `GET /jobs/:id`, `POST /jobs/:id/cancel`, `POST /jobs/:id/retry`, `POST /drive-index/scan`, `GET /drive-index/scan`, `GET /drive-index`, `GET /drive-index/summary`, `GET /drive-index/select-by-size`, `GET /drive-index/:id/download`, plus the tracked-files variants `GET /files/by-type`, `GET /files/by-type/summary` and `POST /files/preview-tokens`.
+
+Migrations for these features are additive (`move_jobs`, `move_job_items`, `drive_items`, `drive_scans`, one index on `files`, and `move_job_items.file_id` becomes nullable) and apply automatically when the backend starts. Back up the database first as with any upgrade.
+
+Tests: `cd backend && npm test` runs the unit tests (move rules, rebalance planner, file classification). `npx tsx src/scripts/test-move.ts full|native|index|scan-all|cleanup` and `npx tsx src/scripts/test-file-types.ts` are live checks that create small throwaway files on your connected drives and remove them afterwards.
 
 ## Configuration
 

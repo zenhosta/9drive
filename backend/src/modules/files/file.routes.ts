@@ -171,7 +171,8 @@ fileRouter.post('/preview-tokens', async (req: AuthRequest, res, next) => {
 })
 
 const moveToAccountSchema = z.object({
-  fileIds: z.array(z.string().min(1)).min(1).max(500),
+  fileIds: z.array(z.string().min(1)).max(1000).default([]),
+  driveItemIds: z.array(z.string().min(1)).max(5000).default([]),
   targetAccountId: z.string().min(1),
   includeNative: z.boolean().default(false),
   nativeFormat: z.enum(['native', 'office']).default('native'),
@@ -180,7 +181,12 @@ const moveToAccountSchema = z.object({
 fileRouter.post('/move-to-account', async (req: AuthRequest, res, next) => {
   try {
     const body = moveToAccountSchema.parse(req.body)
-    const result = await createMoveJob(req.user!.id, 'move', body.fileIds.map((fileId) => ({ fileId, targetAccountId: body.targetAccountId })), { includeNative: body.includeNative, nativeFormat: body.nativeFormat })
+    if (body.fileIds.length + body.driveItemIds.length === 0) return res.status(400).json({ code: 'NOTHING_TO_MOVE', message: 'Select at least one file.' })
+    const requested = [
+      ...body.fileIds.map((fileId) => ({ fileId, targetAccountId: body.targetAccountId })),
+      ...body.driveItemIds.map((driveItemId) => ({ driveItemId, targetAccountId: body.targetAccountId })),
+    ]
+    const result = await createMoveJob(req.user!.id, 'move', requested, { includeNative: body.includeNative, nativeFormat: body.nativeFormat })
     await createAuditLog(req.user!.id, 'MOVE_FILES_TO_ACCOUNT', 'move_job', result.job.id, { count: result.accepted, targetAccountId: body.targetAccountId })
     return res.status(202).json({ jobId: result.job.id, accepted: result.accepted, skipped: result.skipped, warnings: result.warnings })
   } catch (error) {

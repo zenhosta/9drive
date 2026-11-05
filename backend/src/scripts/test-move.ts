@@ -199,6 +199,76 @@ async function cleanupStale() {
   console.log(`removed ${files.length} leftover test file(s)`)
 }
 
+async function waitForScan(accountId: string, timeoutMs = 600_000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    const scan = await prisma.driveScan.findUnique({ where: { connectedAccountId: accountId } })
+    if (scan && scan.status !== 'running') return scan
+    await new Promise((r) => setTimeout(r, 1500))
+  }
+  throw new Error('Timed out waiting for scan')
+}
+
+/** A file in an ordinary Drive folder (outside 9drive): scan finds it with its path, then a move relocates it. */
+async function runIndex() {
+  const { startScans } = await import('../modules/drive-index/drive-scan.js')
+  const { userId, source, target } = await pickAccounts()
+  const tag = Date.now().toString(36)
+  const { drive } = await driveOf(source.id)
+  const { Readable } = await import('node:stream')
+  const folderName = `9drive-move-test-folder-${tag}`
+  const folder = await drive.files.create({ requestBody: { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }, fields: 'id' })
+  const { buffer, md5 } = makeContent(`${tag}-index`)
+  const name = `9drive-move-test-${tag}-index.txt`
+  const created = await drive.files.create({ requestBody: { name, parents: [folder.data.id!] }, media: { mimeType: 'text/plain', body: Readable.from(buffer) }, fields: 'id' })
+  const cleanupDrive: Array<{ accountId: string; id: string }> = [{ accountId: source.id, id: folder.data.id! }]
+  let itemId = ''
+  try {
+    await startScans(userId, [source.id])
+    const scan = await waitForScan(source.id)
+    check('scan finished', scan.status === 'done', `${scan.status} ${scan.itemsFound} files`)
+    const item = await prisma.driveItem.findFirst({ where: { connectedAccountId: source.id, providerFileId: created.data.id! } })
+    itemId = item?.id ?? ''
+    check('scan indexed a file outside the 9drive folder', Boolean(item))
+    check('indexed with folder path, size and md5', item?.path === `My Drive/${folderName}` && item.sizeBytes === BigInt(buffer.length) && item.md5 === md5, item?.path)
+    if (!item) return
+    const untracked = await prisma.file.count({ where: { providerFileId: created.data.id! } })
+    check('file is not a 9Drive-tracked file (raw drive item)', untracked === 0)
+
+    const r = await createMoveJob(userId, 'move', [{ driveItemId: item.id, targetAccountId: target.id }], { includeNative: false, nativeFormat: 'native' })
+    const job = await waitForJob(r.job.id)
+    const moved = await prisma.driveItem.findUniqueOrThrow({ where: { id: item.id } })
+    cleanupDrive.push({ accountId: target.id, id: moved.providerFileId })
+    check('move of indexed file completed', job.status === 'completed', job.status)
+    check('index row now points at target drive, new id', moved.connectedAccountId === target.id && moved.providerFileId !== created.data.id)
+    const { drive: targetDrive } = await driveOf(target.id)
+    const copy = await driveGet(targetDrive, moved.providerFileId)
+    check('copy on target has same size and md5', Boolean(copy) && copy!.md5Checksum === md5 && BigInt(copy!.size ?? 0) === BigInt(buffer.length))
+    const parent = await targetDrive.files.get({ fileId: moved.providerFileId, fields: 'parents' })
+    const parentMeta = parent.data.parents?.[0] ? await targetDrive.files.get({ fileId: parent.data.parents[0], fields: 'name' }) : null
+    check("copy sits in the target's 9drive folder", parentMeta?.data.name === '9drive', parentMeta?.data.name ?? '')
+    const gone = await driveGet(drive, created.data.id!)
+    check('original deleted from source', gone === null || gone.trashed === true)
+    check('no 9Drive file row was invented', (await prisma.file.count({ where: { providerFileId: moved.providerFileId } })) === 0)
+  } finally {
+    for (const c of cleanupDrive) { try { await (await driveOf(c.accountId)).drive.files.delete({ fileId: c.id }) } catch { /* gone */ } }
+    await prisma.moveJob.deleteMany({ where: { items: { some: { driveItemId: itemId || 'none' } } } }).catch(() => undefined)
+    await prisma.driveItem.deleteMany({ where: { name: { startsWith: '9drive-move-test-' } } }).catch(() => undefined)
+    await Promise.allSettled([syncGoogleQuota(source.id), syncGoogleQuota(target.id)])
+  }
+}
+
+async function scanAll() {
+  const { startScans } = await import('../modules/drive-index/drive-scan.js')
+  const accounts = await prisma.connectedAccount.findMany({ where: { provider: 'google_drive', status: 'connected' }, orderBy: { createdAt: 'asc' } })
+  for (const a of accounts) await startScans(a.userId, [a.id])
+  for (const a of accounts) {
+    const scan = await waitForScan(a.id)
+    const agg = await prisma.driveItem.aggregate({ where: { connectedAccountId: a.id }, _count: { _all: true }, _sum: { sizeBytes: true } })
+    console.log(`${a.email}: ${scan.status} · ${agg._count._all} files · ${Number(agg._sum.sizeBytes ?? 0n) / 1024 ** 3} GB${scan.error ? ` · ${scan.error}` : ''}`)
+  }
+}
+
 async function crashPrepare() {
   const { userId, source, target } = await pickAccounts()
   const tag = Date.now().toString(36)
@@ -225,7 +295,7 @@ async function crashPrepare() {
 async function crashVerify(jobId: string) {
   const job = await waitForJob(jobId, 120_000)
   const item = await prisma.moveJobItem.findFirstOrThrow({ where: { jobId } })
-  const file = await prisma.file.findUniqueOrThrow({ where: { id: item.fileId } })
+  const file = await prisma.file.findUniqueOrThrow({ where: { id: item.fileId! } })
   const { drive: targetDrive } = await driveOf(item.targetAccountId)
   const { drive: sourceDrive } = await driveOf(item.sourceAccountId)
   const copies = await targetDrive.files.list({ q: `appProperties has { key='nineDriveMoveItem' and value='${item.id}' } and trashed = false`, fields: 'files(id)', spaces: 'drive' })
@@ -247,6 +317,8 @@ async function main() {
     if (mode === 'full') await runFull()
     else if (mode === 'native') await runNative()
     else if (mode === 'cleanup') await cleanupStale()
+    else if (mode === 'index') await runIndex()
+    else if (mode === 'scan-all') await scanAll()
     else if (mode === 'crash-prepare') await crashPrepare()
     else if (mode === 'crash-verify' && arg) await crashVerify(arg)
     else throw new Error('usage: test-move.ts full | crash-prepare | crash-verify <jobId>')
