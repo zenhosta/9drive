@@ -3,6 +3,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DriveLayout } from '@/layouts/DriveLayout'
 import { AllFilesPage } from '@/pages/AllFilesPage'
 import { ArchivedPage } from '@/pages/ArchivedPage'
+import { OverviewPage } from '@/pages/OverviewPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { GoogleAuthPage } from '@/pages/GoogleAuthPage'
 import { GoogleConnectedPage } from '@/pages/GoogleConnectedPage'
@@ -31,7 +32,8 @@ function App() {
       <Route path="public/files/:token/embed" element={<PublicFilePage embed />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<DriveLayout />}>
-          <Route index element={<Navigate to="/all-files" replace />} />
+          <Route index element={<Navigate to="/overview" replace />} />
+          <Route path="overview" element={<OverviewPage />} />
           <Route path="all-files" element={<AllFilesPage />} />
           <Route path="quota" element={<QuotaTrackerPage />} />
           <Route path="shared" element={<SharedPage />} />
@@ -44,7 +46,7 @@ function App() {
           <Route path="api" element={<ApiManagementPage />} />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/all-files" replace />} />
+      <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
     </UploadProvider>
   )
