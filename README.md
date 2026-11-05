@@ -131,6 +131,8 @@ What happens behind the scenes:
 ```bash
 docker compose logs -f backend      # backend logs (also: frontend, mysql)
 docker compose exec backend npm run seed:google-config   # re-save Google OAuth config from .env
+docker compose exec backend npm run drive:revoke-public -- --dry-run   # list Drive files older versions made publicly editable
+docker compose exec backend npm run drive:revoke-public  # remove that public edit access (add -- --all to also remove view-only public links)
 docker compose down                 # stop
 docker compose down -v              # stop and delete the database volume
 ```
