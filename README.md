@@ -119,11 +119,13 @@ What happens behind the scenes:
 - The backend runs the database migrations on every start, so updating an existing install keeps your data.
 - If `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` are real values, the Google config is saved automatically. If they are blank, the app still starts and you can add them later in **Settings → Google Credentials**.
 
-| Service  | URL                     |
-| -------- | ----------------------- |
-| Frontend | http://localhost:5173   |
-| Backend  | http://localhost:4000   |
-| MySQL    | localhost:3306          |
+| Service  | URL                                            |
+| -------- | ---------------------------------------------- |
+| Frontend | http://localhost:5173                          |
+| Backend  | http://localhost:4000                          |
+| MySQL    | internal to the Docker network (not published) |
+
+By default the frontend and backend ports only listen on `127.0.0.1`, so other machines on your network can't reach them. To expose them directly, set `BIND_ADDRESS=0.0.0.0` in `.env`. On a server, prefer keeping the default and putting an HTTPS reverse proxy in front.
 
 <details>
 <summary><b>Useful Docker commands</b></summary>
@@ -305,7 +307,7 @@ Captcha only turns on when **both** `VITE_RECAPTCHA_SITE_KEY` and `RECAPTCHA_SEC
 4. **Update Google Cloud Console:** add your frontend URL under *Authorized JavaScript origins* and your redirect URI under *Authorized redirect URIs*.
 
 Production tips:
-- Put the frontend and backend behind an HTTPS reverse proxy.
+- Put the frontend and backend behind an HTTPS reverse proxy running on the host. Ports `4000` and `5173` listen on `127.0.0.1` only by default, so point the proxy at `http://127.0.0.1:5173` and `http://127.0.0.1:4000`. If you can't run a proxy on the host, set `BIND_ADDRESS=0.0.0.0` in `.env`.
 - Don't expose the MySQL port to the internet.
 - Rebuild the frontend whenever `VITE_API_URL` or `VITE_RECAPTCHA_SITE_KEY` changes.
 - Publish the OAuth consent screen when you're ready. Google may ask to verify public apps.
