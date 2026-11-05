@@ -5,7 +5,7 @@ import { prisma } from '../../config/prisma.js'
 import { env } from '../../config/env.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { hashToken, randomToken } from '../../utils/crypto.js'
-import { getAuthedGoogleClient, syncGoogleAppFolderFiles, syncGoogleQuota } from '../google/google.service.js'
+import { getAuthedGoogleClient, moveGoogleFileToAppFolder, syncGoogleAppFolderFiles, syncGoogleQuota } from '../google/google.service.js'
 import { deleteS3Object, syncS3Quota, createS3Client, getS3ConfigForAccount } from '../s3/s3.service.js'
 import { streamProviderFile } from './stream-file.js'
 import { googleDownloadExportMimeTypes, normalizeHeaders, withExtension } from './stream-google-file.js'
@@ -145,15 +145,31 @@ fileRouter.get('/trash', async (req: AuthRequest, res, next) => {
 fileRouter.post('/batch/restore', async (req: AuthRequest, res, next) => {
   try {
     const body = batchFileSchema.parse(req.body)
-    const files = await prisma.file.findMany({ where: { id: { in: body.fileIds }, userId: req.user!.id, status: 'deleted' } })
-    const result = await prisma.file.updateMany({
+    const files = await prisma.file.findMany({
       where: { id: { in: body.fileIds }, userId: req.user!.id, status: 'deleted' },
-      data: { status: 'active', deletedAt: null }
+      include: { connectedAccount: true, folder: { select: { deletedAt: true } } }
     })
-    for (const f of files) {
-      await createAuditLog(req.user!.id, 'RESTORE_FILE', 'file', f.id, { name: f.name })
+    const restoredIds: string[] = []
+    const failed: Array<{ fileId: string; message: string }> = []
+
+    for (const file of files) {
+      try {
+        // Folders can't be restored, so files from a deleted folder come back at the root.
+        const folderDeleted = Boolean(file.folder?.deletedAt)
+        if (folderDeleted && file.provider === 'google_drive') await moveGoogleFileToAppFolder(file.connectedAccount, file.providerFileId)
+        await prisma.file.update({ where: { id: file.id }, data: { status: 'active', deletedAt: null, ...(folderDeleted ? { folderId: null } : {}) } })
+        restoredIds.push(file.id)
+        await createAuditLog(req.user!.id, 'RESTORE_FILE', 'file', file.id, { name: file.name })
+      } catch (error) {
+        console.error(`Failed to restore file ${file.id}:`, error instanceof Error ? error.message : error)
+        failed.push({ fileId: file.id, message: 'This file could not be restored from its storage account.' })
+      }
     }
-    return res.json({ status: 'ok', restored: result.count })
+
+    if (restoredIds.length === 0 && failed.length > 0) {
+      return res.status(400).json({ code: 'FILES_RESTORE_FAILED', message: 'No files were restored.', restored: 0, restoredIds, failed })
+    }
+    return res.json({ status: 'ok', restored: restoredIds.length, restoredIds, failed })
   } catch (error) {
     return next(error)
   }

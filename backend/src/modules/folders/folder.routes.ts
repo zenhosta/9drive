@@ -3,7 +3,7 @@ import { google } from 'googleapis'
 import { z } from 'zod'
 import { prisma } from '../../config/prisma.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
-import { getAuthedGoogleClient, syncGoogleQuota, ensureGoogleAppFolder } from '../google/google.service.js'
+import { getAuthedGoogleClient, ensureGoogleAppFolder } from '../google/google.service.js'
 import { createAuditLog } from '../../utils/audit.js'
 
 export const folderRouter = Router()
@@ -272,37 +272,13 @@ folderRouter.delete('/:id', async (req: AuthRequest, res, next) => {
       }
     }
 
-    const files = await prisma.file.findMany({ where: { userId: req.user!.id, status: 'active', folderId: { in: [...folderIds] } }, include: { connectedAccount: true } })
-    const syncedAccountIds = new Set<string>()
-    for (const file of files) {
-      try {
-        const auth = await getAuthedGoogleClient(file.connectedAccount)
-        const drive = google.drive({ version: 'v3', auth })
-        await drive.files.delete({ fileId: file.providerFileId })
-        syncedAccountIds.add(file.connectedAccountId)
-      } catch {
-        // Keep going so one failure does not block the whole deletion
-      }
-    }
-
-    // Delete folders on Google Drive
-    const foldersToDelete = await prisma.folder.findMany({ where: { id: { in: [...folderIds] }, userId: req.user!.id }, include: { connectedAccount: true } })
-    for (const f of foldersToDelete) {
-      if (f.providerFolderId && f.connectedAccount) {
-        try {
-          const auth = await getAuthedGoogleClient(f.connectedAccount)
-          const drive = google.drive({ version: 'v3', auth })
-          await drive.files.delete({ fileId: f.providerFolderId })
-          if (f.connectedAccountId) syncedAccountIds.add(f.connectedAccountId)
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    await prisma.file.updateMany({ where: { id: { in: files.map((file) => file.id) } }, data: { status: 'deleted', deletedAt: new Date() } })
-    await prisma.folder.updateMany({ where: { id: { in: [...folderIds] }, userId: req.user!.id }, data: { deletedAt: new Date() } })
-    for (const accountId of syncedAccountIds) await syncGoogleQuota(accountId).catch(() => undefined)
+    // Same as trashing a single file: only the database changes here. Provider copies stay
+    // until the user deletes them permanently from Trash, so this can always be undone.
+    const deletedAt = new Date()
+    await prisma.$transaction([
+      prisma.file.updateMany({ where: { userId: req.user!.id, status: 'active', folderId: { in: [...folderIds] } }, data: { status: 'deleted', deletedAt } }),
+      prisma.folder.updateMany({ where: { id: { in: [...folderIds] }, userId: req.user!.id }, data: { deletedAt } }),
+    ])
 
     await createAuditLog(req.user!.id, 'DELETE_FOLDER', 'folder', root.id, { name: root.name })
     return res.json({ status: 'ok' })

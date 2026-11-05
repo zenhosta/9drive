@@ -90,6 +90,15 @@ export async function ensureGoogleAppFolder(account: ConnectedAccount) {
   return folderId
 }
 
+// Moves a file out of a Drive folder the app no longer tracks, so sync can still find it.
+export async function moveGoogleFileToAppFolder(account: ConnectedAccount, fileId: string) {
+  const auth = await getAuthedGoogleClient(account)
+  const drive = google.drive({ version: 'v3', auth })
+  const appFolderId = await ensureGoogleAppFolder(account)
+  const metadata = await drive.files.get({ fileId, fields: 'parents' })
+  await drive.files.update({ fileId, addParents: appFolderId, removeParents: metadata.data.parents?.join(','), fields: 'id' })
+}
+
 export type GoogleAppFolderSyncResult = {
   accountId: string
   created: number
