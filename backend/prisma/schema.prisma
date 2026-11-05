@@ -231,6 +231,7 @@ model File {
   @@index([connectedAccountId])
   @@index([folderId])
   @@index([providerFileId])
+  @@index([userId, status, mimeType])
   @@map("files")
 }
 

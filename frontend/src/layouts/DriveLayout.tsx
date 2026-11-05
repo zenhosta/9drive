@@ -7,6 +7,7 @@ import {
   FileArchive,
   Gauge,
   LayoutDashboard,
+  Layers,
   History,
   LogOut,
   Menu,
@@ -39,6 +40,7 @@ import { cn } from '@/lib/utils'
 const menu = [
   { label: 'Overview', icon: LayoutDashboard, href: '/overview' },
   { label: 'All Files', icon: FileArchive, href: '/all-files' },
+  { label: 'Files by Type', icon: Layers, href: '/files-by-type' },
   { label: 'Jobs', icon: ArrowRightLeft, href: '/move-jobs' },
   { label: 'Quota Tracker', icon: Gauge, href: '/quota' },
   { label: 'Shared With Me', icon: Share2, href: '/shared' },

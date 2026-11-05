@@ -3,6 +3,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DriveLayout } from '@/layouts/DriveLayout'
 import { AllFilesPage } from '@/pages/AllFilesPage'
 import { ArchivedPage } from '@/pages/ArchivedPage'
+import { FilesByTypePage } from '@/pages/FilesByTypePage'
 import { JobsPage } from '@/pages/JobsPage'
 import { RebalancePage } from '@/pages/RebalancePage'
 import { JobsProvider } from '@/context/JobsContext'
@@ -39,6 +40,7 @@ function App() {
           <Route index element={<Navigate to="/overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
           <Route path="all-files" element={<AllFilesPage />} />
+          <Route path="files-by-type" element={<FilesByTypePage />} />
           <Route path="move-jobs" element={<JobsPage />} />
           <Route path="rebalance" element={<RebalancePage />} />
           <Route path="quota" element={<QuotaTrackerPage />} />

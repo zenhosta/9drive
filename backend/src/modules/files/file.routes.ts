@@ -14,6 +14,8 @@ import { Readable } from 'node:stream'
 import { ZipArchive } from 'archiver'
 import { createAuditLog } from '../../utils/audit.js'
 import { createMoveJob, JobRequestError } from '../jobs/job.service.js'
+import { CATEGORY_KEYS, CATEGORY_LABELS, categoryWhere, classifyFile, type CategoryKey } from './file-types.js'
+import type { Prisma } from '@prisma/client'
 
 
 
@@ -86,6 +88,83 @@ fileRouter.get('/', async (req: AuthRequest, res, next) => {
       orderBy: { createdAt: 'desc' }
     })
     return res.json({ files: files.map((file) => ({ ...file, sizeBytes: file.sizeBytes.toString() })) })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+// ---- Files by type (all drives) ----
+
+const byTypeQuery = z.object({
+  category: z.enum(['all', ...CATEGORY_KEYS]).default('all'),
+  accountId: z.string().optional(),
+  q: z.string().trim().max(255).optional(),
+  sort: z.enum(['name', 'size', 'date']).default('date'),
+  order: z.enum(['asc', 'desc']).default('desc'),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+})
+
+function baseByTypeWhere(userId: string, q: z.infer<typeof byTypeQuery>): Prisma.FileWhereInput {
+  return {
+    userId,
+    status: 'active',
+    ...(q.accountId ? { connectedAccountId: q.accountId } : {}),
+    ...(q.q ? { name: { contains: q.q } } : {}),
+  }
+}
+
+fileRouter.get('/by-type/summary', async (req: AuthRequest, res, next) => {
+  try {
+    const query = byTypeQuery.parse(req.query)
+    const base = baseByTypeWhere(req.user!.id, query)
+    const [total, ...perCategory] = await Promise.all([
+      prisma.file.aggregate({ where: base, _count: { _all: true }, _sum: { sizeBytes: true } }),
+      ...CATEGORY_KEYS.map((key) => prisma.file.aggregate({ where: { AND: [base, categoryWhere(key)] }, _count: { _all: true }, _sum: { sizeBytes: true } })),
+    ])
+    const categories = CATEGORY_KEYS.map((key, i) => ({ key, label: CATEGORY_LABELS[key], count: perCategory[i]._count._all, sizeBytes: (perCategory[i]._sum.sizeBytes ?? 0n).toString() }))
+    return res.json({ total: { count: total._count._all, sizeBytes: (total._sum.sizeBytes ?? 0n).toString() }, categories })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+fileRouter.get('/by-type', async (req: AuthRequest, res, next) => {
+  try {
+    const query = byTypeQuery.parse(req.query)
+    const base = baseByTypeWhere(req.user!.id, query)
+    const where: Prisma.FileWhereInput = query.category === 'all' ? base : { AND: [base, categoryWhere(query.category as CategoryKey)] }
+    const orderField = query.sort === 'name' ? 'name' : query.sort === 'size' ? 'sizeBytes' : 'createdAt'
+    const [total, files] = await Promise.all([
+      prisma.file.count({ where }),
+      prisma.file.findMany({
+        where,
+        include: { connectedAccount: { select: { id: true, email: true, displayName: true, provider: true } }, folder: { select: { id: true, name: true } } },
+        orderBy: [{ [orderField]: query.order }, { id: 'asc' }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+    ])
+    return res.json({
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+      files: files.map((file) => ({ ...file, sizeBytes: file.sizeBytes.toString(), category: classifyFile(file.mimeType, file.name) })),
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+// One request for a whole page of thumbnails instead of one preview-token call per file.
+fileRouter.post('/preview-tokens', async (req: AuthRequest, res, next) => {
+  try {
+    const body = z.object({ fileIds: z.array(z.string().min(1)).min(1).max(100) }).parse(req.body)
+    const files = await prisma.file.findMany({ where: { id: { in: body.fileIds }, userId: req.user!.id, status: 'active' }, select: { id: true } })
+    const tokens = files.map((file) => ({ fileId: file.id, token: randomToken(32) }))
+    await prisma.filePreviewToken.createMany({ data: tokens.map((t) => ({ fileId: t.fileId, userId: req.user!.id, tokenHash: hashToken(t.token), expiresAt: new Date(Date.now() + 10 * 60_000) })) })
+    return res.status(201).json({ previews: Object.fromEntries(tokens.map((t) => [t.fileId, `/files/preview/${t.token}`])) })
   } catch (error) {
     return next(error)
   }
