@@ -815,7 +815,7 @@ export function AllFilesPage() {
                   }}
                   className="w-full text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-950/30 dark:border-blue-900/50"
                 >
-                  {makingPublic ? 'Making Public...' : 'Make Public & Copy GDrive Link'}
+                  {makingPublic ? 'Making Public...' : 'Make Public (View Only) & Copy GDrive Link'}
                 </Button>
               )}
             </div>
