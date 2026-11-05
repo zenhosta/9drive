@@ -269,7 +269,7 @@ storageRouter.post('/rebalance/plan', async (req: AuthRequest, res, next) => {
       shortfallBytes: plan.shortfallBytes.toString(),
       nativeExcluded: plan.nativeExcluded,
       warnings: plan.warnings,
-      items: plan.items.map((i) => ({ driveItemId: i.fileId, name: i.name, sizeBytes: i.sizeBytes.toString(), targetAccountId: i.targetAccountId, targetEmail: emailById.get(i.targetAccountId) })),
+      items: plan.items.map((i) => ({ driveItemId: i.fileId, fileId: i.fileId, name: i.name, sizeBytes: i.sizeBytes.toString(), targetAccountId: i.targetAccountId, targetEmail: emailById.get(i.targetAccountId) })),
       unplaced: plan.unplaced.map((u) => ({ driveItemId: u.fileId, name: u.name, sizeBytes: u.sizeBytes.toString() })),
       accounts: plan.accounts.map((a) => ({
         id: a.id, email: a.email, role: a.id === source.id ? 'source' : 'target',
@@ -285,14 +285,15 @@ storageRouter.post('/rebalance/plan', async (req: AuthRequest, res, next) => {
 
 const executeSchema = z.object({
   sourceAccountId: z.string().min(1),
-  items: z.array(z.object({ driveItemId: z.string().min(1), targetAccountId: z.string().min(1) })).min(1).max(5000),
+  // `fileId` is accepted as an alias: plan items carry the drive-index id under both names so a cached older frontend keeps working.
+  items: z.array(z.object({ driveItemId: z.string().min(1).optional(), fileId: z.string().min(1).optional(), targetAccountId: z.string().min(1) }).refine((i) => Boolean(i.driveItemId ?? i.fileId), { message: 'driveItemId is required' })).min(1).max(5000),
 })
 
 // The plan is not trusted: every file, account and the free space is re-validated when the job is created.
 storageRouter.post('/rebalance/execute', async (req: AuthRequest, res, next) => {
   try {
     const body = executeSchema.parse(req.body)
-    const result = await createMoveJob(req.user!.id, 'rebalance', body.items, { includeNative: false, nativeFormat: 'native' }, body.sourceAccountId)
+    const result = await createMoveJob(req.user!.id, 'rebalance', body.items.map((i) => ({ driveItemId: (i.driveItemId ?? i.fileId)!, targetAccountId: i.targetAccountId })), { includeNative: false, nativeFormat: 'native' }, body.sourceAccountId)
     await createAuditLog(req.user!.id, 'REBALANCE_STARTED', 'move_job', result.job.id, { sourceAccountId: body.sourceAccountId, count: result.accepted })
     return res.status(202).json({ jobId: result.job.id, accepted: result.accepted, skipped: result.skipped, warnings: result.warnings })
   } catch (error) {

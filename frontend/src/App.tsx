@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DriveLayout } from '@/layouts/DriveLayout'
-import { AllFilesPage } from '@/pages/AllFilesPage'
+import { AllFilesRoute } from '@/pages/AllFilesRoute'
 import { ArchivedPage } from '@/pages/ArchivedPage'
 import { FilesByTypePage } from '@/pages/FilesByTypePage'
 import { JobsPage } from '@/pages/JobsPage'
@@ -41,7 +41,7 @@ function App() {
         <Route element={<JobsProvider><DriveLayout /><JobsToast /></JobsProvider>}>
           <Route index element={<Navigate to="/overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
-          <Route path="all-files" element={<AllFilesPage />} />
+          <Route path="all-files" element={<AllFilesRoute />} />
           <Route path="files-by-type" element={<FilesByTypePage />} />
           <Route path="move-jobs" element={<JobsPage />} />
           <Route path="rebalance" element={<RebalancePage />} />

@@ -7,23 +7,12 @@ import { MoveToDriveDialog } from '@/components/drive/MoveToDriveDialog'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { useJobs } from '@/context/JobsContext'
 import { useToast } from '@/context/ToastContext'
-import { API_URL, apiFetch, formatBytes, formatDate } from '@/lib/api'
-import { getAccessToken } from '@/lib/auth'
-import { categoryStyle, isCategoryKey, type CategoryKey } from '@/lib/file-types'
+import { apiFetch, formatBytes, formatDate } from '@/lib/api'
+import { badgeTone, authedFetch, downloadIndexedFile, driveName, googleDriveLink, TypeIcon, type IndexedRow } from '@/components/drive/drive-bits'
+import { isCategoryKey, type CategoryKey } from '@/lib/file-types'
 import { cn } from '@/lib/utils'
 
-type Row = {
-  id: string
-  providerFileId: string
-  name: string
-  mimeType: string
-  sizeBytes: string
-  path: string
-  modifiedAt: string | null
-  connectedAccountId: string
-  connectedAccount: { id: string; email: string; displayName: string | null; provider: string }
-  category: CategoryKey
-}
+type Row = IndexedRow
 type ListResponse = { page: number; pageSize: number; total: number; totalPages: number; files: Row[] }
 type Summary = {
   total: { count: number; sizeBytes: string }
@@ -38,25 +27,7 @@ const PAGE_SIZE = 50
 const THUMB_MAX_BYTES = 3 * 1024 * 1024
 const GB = 1024 ** 3
 const viewKey = '9drive:files-by-type-view'
-const badgeTones = ['bg-blue-100 text-blue-700', 'bg-emerald-100 text-emerald-700', 'bg-violet-100 text-violet-700', 'bg-amber-100 text-amber-800', 'bg-pink-100 text-pink-700', 'bg-cyan-100 text-cyan-700', 'bg-lime-100 text-lime-800']
 const sizeFilters = [{ label: 'Any size', value: '' }, { label: 'Over 1 MB', value: '1' }, { label: 'Over 10 MB', value: '10' }, { label: 'Over 100 MB', value: '100' }, { label: 'Over 1 GB', value: '1024' }]
-
-function badgeTone(accountId: string) {
-  let hash = 0
-  for (const ch of accountId) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
-  return badgeTones[hash % badgeTones.length]
-}
-
-const driveName = (a: { email: string }) => a.email.split('@')[0]
-
-function TypeIcon({ category, className }: { category: CategoryKey; className?: string }) {
-  const { icon: Icon, tone } = categoryStyle[category]
-  return <span className={cn('flex shrink-0 items-center justify-center rounded-lg', tone, className)}><Icon className="h-1/2 w-1/2" aria-hidden /></span>
-}
-
-async function authedFetch(path: string) {
-  return fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${getAccessToken()}` } })
-}
 
 /** Downloads a small image only when its card scrolls into view. Large files and non-images show an icon. */
 function Thumb({ file }: { file: Row }) {
@@ -240,14 +211,7 @@ export function FilesByTypePage() {
   async function downloadOne(file: Row) {
     setBusy(true)
     try {
-      const r = await authedFetch(`/drive-index/${file.id}/download`)
-      if (!r.ok) throw new Error('Download failed')
-      const url = URL.createObjectURL(await r.blob())
-      const link = document.createElement('a')
-      link.href = url
-      link.download = file.name
-      link.click()
-      URL.revokeObjectURL(url)
+      await downloadIndexedFile(file.id, file.name)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Download failed')
     } finally {
@@ -346,7 +310,7 @@ export function FilesByTypePage() {
           <span className="text-sm font-extrabold text-blue-900">{selectedList.length.toLocaleString()} selected · {formatBytes(selectedBytes)}</span>
           <Button size="sm" onClick={() => setMoveOpen(true)}><ArrowRightLeft className="h-4 w-4" />Move to drive</Button>
           {selectedList.length === 1 ? <Button variant="outline" size="sm" onClick={() => downloadOne(selectedList[0])} disabled={busy}><Download className="h-4 w-4" />Download</Button> : null}
-          {selectedList.length === 1 ? <a className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold hover:bg-slate-50" target="_blank" rel="noreferrer" href={`https://drive.google.com/file/d/${selectedList[0].providerFileId}/view?authuser=${encodeURIComponent(selectedList[0].connectedAccount.email)}`}><ExternalLink className="h-4 w-4" />Open in Google Drive</a> : null}
+          {selectedList.length === 1 ? <a className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold hover:bg-slate-50" target="_blank" rel="noreferrer" href={googleDriveLink(selectedList[0])}><ExternalLink className="h-4 w-4" />Open in Google Drive</a> : null}
           <Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>Clear</Button>
         </div>
       ) : null}

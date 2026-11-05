@@ -10,6 +10,7 @@ import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.
 import { ensureGoogleAppFolder, getAuthedGoogleClient, syncGoogleQuota } from '../google/google.service.js'
 import { buildS3ObjectKey, getS3ConfigForAccount, syncS3Quota, uploadS3Object } from '../s3/s3.service.js'
 import { createAuditLog } from '../../utils/audit.js'
+import { indexTrackedFile } from '../drive-index/drive-scan.js'
 
 export const uploadRouter = Router()
 
@@ -249,6 +250,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
 
         const file = account.provider === 's3' ? null : await prisma.file.create({ data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 'google_drive', providerFileId, name: uploadedName, mimeType: uploadedMimeType, sizeBytes: meta.sizeBytes } })
         if (file) {
+          indexTrackedFile(file).catch(() => undefined)
           logUpload('database file created', { sessionId: session.id, fileId: file.id, accountId: account.id })
           completed.push({ ...file, sizeBytes: file.sizeBytes.toString() })
         }
@@ -538,6 +540,7 @@ uploadRouter.put('/resumable/chunk/:id', requireAuth, async (req: AuthRequest, r
         where: { id: session.id },
         data: { status: 'completed', completedAt: new Date() }
       })
+      indexTrackedFile(existingFile).catch(() => undefined)
 
       await createAuditLog(req.user!.id, 'UPLOAD_FILE', 'file', existingFile.id, { name: existingFile.name, size: existingFile.sizeBytes.toString() })
 

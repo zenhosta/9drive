@@ -176,7 +176,19 @@ export async function syncGoogleAppFolderFiles(accountId: string, userId: string
     }
   }
 
-  const missingActiveIds = existingFiles.filter((file) => file.status === 'active' && !driveFileIds.has(file.providerFileId)).map((file) => file.id)
+  // Files can legitimately live outside the 9drive folder (e.g. moved into a folder the user picked), so a file that
+  // is merely absent from the listing is only marked deleted if Drive confirms it is gone or trashed.
+  const missingCandidates = existingFiles.filter((file) => file.status === 'active' && !driveFileIds.has(file.providerFileId))
+  const missingActiveIds: string[] = []
+  for (const file of missingCandidates) {
+    try {
+      const meta = await drive.files.get({ fileId: file.providerFileId, fields: 'id,trashed' })
+      if (meta.data.trashed) missingActiveIds.push(file.id)
+    } catch (error) {
+      if ((error as { code?: number }).code === 404) missingActiveIds.push(file.id)
+      // any other error: keep the file rather than risk hiding it
+    }
+  }
   if (missingActiveIds.length > 0) {
     const result = await prisma.file.updateMany({ where: { id: { in: missingActiveIds }, userId }, data: { status: 'deleted', deletedAt: new Date() } })
     deleted = result.count

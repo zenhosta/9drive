@@ -224,10 +224,16 @@ async function runIndex() {
   const cleanupDrive: Array<{ accountId: string; id: string }> = [{ accountId: source.id, id: folder.data.id! }]
   let itemId = ''
   try {
-    await startScans(userId, [source.id])
-    const scan = await waitForScan(source.id)
+    // Drive's search index can lag a few seconds behind a brand-new file, so rescan until it shows up.
+    let item = null as Awaited<ReturnType<typeof prisma.driveItem.findFirst>>
+    let scan = await prisma.driveScan.findFirstOrThrow({ where: { connectedAccountId: source.id } })
+    for (let attempt = 0; attempt < 4 && !item; attempt += 1) {
+      await new Promise((r) => setTimeout(r, attempt === 0 ? 4000 : 10000))
+      await startScans(userId, [source.id])
+      scan = await waitForScan(source.id)
+      item = await prisma.driveItem.findFirst({ where: { connectedAccountId: source.id, providerFileId: created.data.id! } })
+    }
     check('scan finished', scan.status === 'done', `${scan.status} ${scan.itemsFound} files`)
-    const item = await prisma.driveItem.findFirst({ where: { connectedAccountId: source.id, providerFileId: created.data.id! } })
     itemId = item?.id ?? ''
     check('scan indexed a file outside the 9drive folder', Boolean(item))
     check('indexed with folder path, size and md5', item?.path === `My Drive/${folderName}` && item.sizeBytes === BigInt(buffer.length) && item.md5 === md5, item?.path)

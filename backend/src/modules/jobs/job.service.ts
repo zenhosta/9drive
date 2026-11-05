@@ -3,8 +3,10 @@ import { prisma } from '../../config/prisma.js'
 import { syncGoogleQuota } from '../google/google.service.js'
 import { DAILY_UPLOAD_LIMIT_BYTES, isNativeGoogleMime, nativeExportFor, TARGET_SAFETY_MARGIN_BYTES } from './move-logic.js'
 import { kickMoveRunner } from './move-runner.js'
+import { driveFor, resolveFolder } from '../google/google-copy.js'
+import { classifyDriveError } from './move-logic.js'
 
-export type MoveOptions = { includeNative: boolean; nativeFormat: 'native' | 'office' }
+export type MoveOptions = { includeNative: boolean; nativeFormat: 'native' | 'office'; targetFolderId?: string; targetFolderPath?: string }
 export type RequestedMove = { fileId?: string; driveItemId?: string; targetAccountId: string }
 
 export class JobRequestError extends Error {
@@ -101,6 +103,21 @@ export async function createMoveJob(userId: string, type: 'move' | 'rebalance', 
 
   if (accepted.length === 0) throw new JobRequestError(400, 'NOTHING_TO_MOVE', 'None of the selected files can be moved.', { skipped })
 
+  // Optional destination folder: one target drive, and the folder must exist and accept files.
+  let jobOptions: MoveOptions = { includeNative: options.includeNative, nativeFormat: options.nativeFormat }
+  if (options.targetFolderId) {
+    const targetIdsUsed = [...new Set(accepted.map((a) => a.targetAccountId))]
+    if (targetIdsUsed.length !== 1) throw new JobRequestError(400, 'BAD_TARGET_FOLDER', 'A destination folder can only be used when moving to a single drive.')
+    try {
+      const { drive } = await driveFor(targetById.get(targetIdsUsed[0])!)
+      const folder = await resolveFolder(drive, options.targetFolderId)
+      jobOptions = { ...jobOptions, targetFolderId: folder.id, targetFolderPath: folder.path }
+    } catch (error) {
+      const c = classifyDriveError(error)
+      throw new JobRequestError(400, 'BAD_TARGET_FOLDER', c.status === 404 ? 'The destination folder no longer exists.' : `The destination folder cannot be used: ${c.message}`)
+    }
+  }
+
   const bytesOf = (c: Candidate) => (isNativeGoogleMime(c.mimeType) ? 0n : c.sizeBytes)
   const bytesByTarget = new Map<string, bigint>()
   for (const a of accepted) bytesByTarget.set(a.targetAccountId, (bytesByTarget.get(a.targetAccountId) ?? 0n) + bytesOf(a))
@@ -115,14 +132,14 @@ export async function createMoveJob(userId: string, type: 'move' | 'rebalance', 
   }
   const nativeCount = accepted.filter((a) => isNativeGoogleMime(a.mimeType)).length
   if (nativeCount > 0) warnings.push(`${nativeCount} native Google file(s) will get a new Drive file ID and lose Google-side revision history, comments and Google sharing. 9Drive name, folder and share links are kept.`)
-  if (accepted.some((a) => a.driveItemId)) warnings.push('Files that were not in the 9drive folder are copied into the target drive\'s 9drive folder, so they leave their old folder path.')
+  if (!jobOptions.targetFolderId && accepted.some((a) => a.driveItemId)) warnings.push('Files that were not in the 9drive folder are copied into the target drive\'s 9drive folder, so they leave their old folder path.')
 
   const job = await prisma.moveJob.create({
     data: {
       userId,
       type,
       status: 'queued',
-      options,
+      options: jobOptions,
       totalItems: accepted.length,
       totalBytes: accepted.reduce((sum, a) => sum + bytesOf(a), 0n),
       items: {

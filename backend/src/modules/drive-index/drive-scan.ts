@@ -32,6 +32,15 @@ export function buildPath(folderId: string | undefined, folders: Map<string, Fol
   return ['My Drive', ...parts.reverse()].join('/').slice(0, 1000)
 }
 
+/** Makes a freshly uploaded/synced 9Drive file show up in the drive browser without waiting for the next scan. */
+export async function indexTrackedFile(file: { userId: string; connectedAccountId: string; providerFileId: string; name: string; mimeType: string; sizeBytes: bigint }, path = 'My Drive/9drive') {
+  await prisma.driveItem.upsert({
+    where: { connectedAccountId_providerFileId: { connectedAccountId: file.connectedAccountId, providerFileId: file.providerFileId } },
+    create: { userId: file.userId, connectedAccountId: file.connectedAccountId, providerFileId: file.providerFileId, name: file.name.slice(0, 255), mimeType: file.mimeType, sizeBytes: file.sizeBytes, path, modifiedAt: new Date(), scanId: crypto.randomUUID() },
+    update: { name: file.name.slice(0, 255), mimeType: file.mimeType, sizeBytes: file.sizeBytes, modifiedAt: new Date() },
+  })
+}
+
 export function isScanRunning(accountId: string) {
   return running.has(accountId)
 }

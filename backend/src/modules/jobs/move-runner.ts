@@ -31,7 +31,7 @@ import {
 const CONCURRENCY = 3
 const POLL_MS = 3000
 
-type JobOptions = { includeNative?: boolean; nativeFormat?: 'native' | 'office' }
+type JobOptions = { includeNative?: boolean; nativeFormat?: 'native' | 'office'; targetFolderId?: string; targetFolderPath?: string }
 type ItemWithJob = MoveJobItem & { job: { id: string; userId: string; options: unknown } }
 
 /** What is being moved: either a 9Drive file row or a row from the Drive index. */
@@ -213,7 +213,7 @@ async function copyStep(item: ItemWithJob, file: Subject, source: ConnectedAccou
   const needed = native ? 0n : BigInt(meta.size ?? 0)
   await reserveTargetSpace(target, needed, item.targetAccountId)
   try {
-    const parentId = await ensureGoogleAppFolder(target)
+    const parentId = options.targetFolderId ?? (await ensureGoogleAppFolder(target))
     await setItem(item.id, { step: 'copying' })
 
     // Crash/retry safety: adopt a copy a previous attempt already finished.
@@ -291,14 +291,14 @@ async function verifyAndSwitch(item: ItemWithJob, file: Subject, source: Connect
   if (problem) throw new ItemFailure(`Verification failed, original kept: ${problem}`)
 
   // Re-point the records at the copy. The WHERE guards make this idempotent and safe against concurrent edits.
-  const switched = await switchRecords(item, targetId, targetMeta.md5Checksum ?? null, dbChanges)
+  const switched = await switchRecords(item, targetId, targetMeta.md5Checksum ?? null, dbChanges, options.targetFolderPath)
   if (!switched) throw new ItemFailure('The file was changed or deleted while it was being moved; the original was kept.')
 
   // Match upload behaviour: files are shared as "anyone with the link" so view-url links keep working. Best effort.
   await makePublicWriter(targetDrive, targetId).catch((error) => log('could not set public permission on moved file', { itemId: item.id, message: error instanceof Error ? error.message : String(error) }))
 }
 
-async function switchRecords(item: ItemWithJob, targetId: string, md5: string | null, changes: { name?: string; mimeType?: string; sizeBytes?: bigint }) {
+async function switchRecords(item: ItemWithJob, targetId: string, md5: string | null, changes: { name?: string; mimeType?: string; sizeBytes?: bigint }, folderPath?: string) {
   let fileOk = true
   if (item.fileId) {
     const updated = await prisma.file.updateMany({
@@ -311,7 +311,7 @@ async function switchRecords(item: ItemWithJob, targetId: string, md5: string | 
   // The drive index row (if any) follows the file; files copied in land in the target's 9drive folder.
   const indexed = await prisma.driveItem.updateMany({
     where: { connectedAccountId: item.sourceAccountId, providerFileId: item.sourceProviderFileId },
-    data: { connectedAccountId: item.targetAccountId, providerFileId: targetId, path: 'My Drive/9drive', ...(md5 ? { md5 } : {}), ...changes },
+    data: { connectedAccountId: item.targetAccountId, providerFileId: targetId, path: folderPath ?? 'My Drive/9drive', ...(md5 ? { md5 } : {}), ...changes },
   })
   return item.fileId ? true : indexed.count === 1
 }

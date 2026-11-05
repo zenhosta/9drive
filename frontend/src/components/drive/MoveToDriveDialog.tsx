@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Cloud, Database } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DummyModal } from '@/components/drive/DummyModal'
+import { TargetFolderPicker, type TargetFolder } from '@/components/drive/TargetFolderPicker'
 import { useJobs } from '@/context/JobsContext'
 import { apiFetch, formatBytes } from '@/lib/api'
 import { usageBarClass, usageLevel, usagePercent } from '@/lib/storage-thresholds'
@@ -19,6 +20,7 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
   const [accounts, setAccounts] = useState<OverviewAccount[]>([])
   const [loading, setLoading] = useState(false)
   const [targetId, setTargetId] = useState('')
+  const [folder, setFolder] = useState<TargetFolder | null>(null)
   const [includeNative, setIncludeNative] = useState(false)
   const [nativeFormat, setNativeFormat] = useState<'native' | 'office'>('native')
   const [submitting, setSubmitting] = useState(false)
@@ -29,6 +31,7 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
     if (!open) return
     setError('')
     setResult(null)
+    setFolder(null)
     setIncludeNative(false)
     setLoading(true)
     apiFetch<{ accounts: OverviewAccount[] }>('/storage/overview')
@@ -61,7 +64,7 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
     setSubmitting(true)
     setError('')
     try {
-      const data = await apiFetch<MoveResponse>('/files/move-to-account', { method: 'POST', body: JSON.stringify({ fileIds: files.filter((f) => f.kind !== 'drive').map((f) => f.id), driveItemIds: files.filter((f) => f.kind === 'drive').map((f) => f.id), targetAccountId: targetId, includeNative, nativeFormat }) })
+      const data = await apiFetch<MoveResponse>('/files/move-to-account', { method: 'POST', body: JSON.stringify({ fileIds: files.filter((f) => f.kind !== 'drive').map((f) => f.id), driveItemIds: files.filter((f) => f.kind === 'drive').map((f) => f.id), targetAccountId: targetId, targetFolderId: folder?.id, includeNative, nativeFormat }) })
       await refresh()
       onStarted?.(data.jobId)
       if (data.skipped.length === 0 && data.warnings.length === 0) onClose()
@@ -119,6 +122,8 @@ export function MoveToDriveDialog({ open, files, preselectSourceAccountId, onClo
               {rows.length === 0 ? <p className="text-sm text-slate-500">No Google Drive accounts connected.</p> : null}
             </fieldset>
           )}
+
+          {targetId ? <TargetFolderPicker accountId={targetId} value={folder} onChange={setFolder} /> : null}
 
           {nativeCount > 0 ? (
             <div className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">

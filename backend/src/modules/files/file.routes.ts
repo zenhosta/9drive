@@ -174,6 +174,7 @@ const moveToAccountSchema = z.object({
   fileIds: z.array(z.string().min(1)).max(1000).default([]),
   driveItemIds: z.array(z.string().min(1)).max(5000).default([]),
   targetAccountId: z.string().min(1),
+  targetFolderId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional(),
   includeNative: z.boolean().default(false),
   nativeFormat: z.enum(['native', 'office']).default('native'),
 })
@@ -186,7 +187,7 @@ fileRouter.post('/move-to-account', async (req: AuthRequest, res, next) => {
       ...body.fileIds.map((fileId) => ({ fileId, targetAccountId: body.targetAccountId })),
       ...body.driveItemIds.map((driveItemId) => ({ driveItemId, targetAccountId: body.targetAccountId })),
     ]
-    const result = await createMoveJob(req.user!.id, 'move', requested, { includeNative: body.includeNative, nativeFormat: body.nativeFormat })
+    const result = await createMoveJob(req.user!.id, 'move', requested, { includeNative: body.includeNative, nativeFormat: body.nativeFormat, targetFolderId: body.targetFolderId })
     await createAuditLog(req.user!.id, 'MOVE_FILES_TO_ACCOUNT', 'move_job', result.job.id, { count: result.accepted, targetAccountId: body.targetAccountId })
     return res.status(202).json({ jobId: result.job.id, accepted: result.accepted, skipped: result.skipped, warnings: result.warnings })
   } catch (error) {

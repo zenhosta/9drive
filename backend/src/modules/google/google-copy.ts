@@ -150,3 +150,44 @@ export async function deleteDriveFile(drive: drive_v3.Drive, fileId: string) {
 export async function trashDriveFile(drive: drive_v3.Drive, fileId: string) {
   await drive.files.update({ fileId, requestBody: { trashed: true } })
 }
+
+const FOLDER_MIME = 'application/vnd.google-apps.folder'
+
+/** Checks that a folder exists in the account, is usable as a destination, and returns its display path. */
+export async function resolveFolder(drive: drive_v3.Drive, folderId: string): Promise<{ id: string; path: string }> {
+  const rootId = (await drive.files.get({ fileId: 'root', fields: 'id' })).data.id ?? 'root'
+  if (folderId === 'root' || folderId === rootId) return { id: rootId, path: 'My Drive' }
+  const first = (await drive.files.get({ fileId: folderId, fields: 'id,name,mimeType,trashed,parents,capabilities(canAddChildren)' })).data
+  if (first.mimeType !== FOLDER_MIME || first.trashed) throw new DriveHttpError('That destination is not a usable folder.', 400)
+  if (first.capabilities?.canAddChildren === false) throw new DriveHttpError('You cannot add files to that folder.', 403)
+  const names = [first.name ?? '']
+  let parent = first.parents?.[0]
+  for (let depth = 0; parent && parent !== rootId && depth < 30; depth += 1) {
+    try {
+      const p = (await drive.files.get({ fileId: parent, fields: 'name,parents' })).data
+      names.push(p.name ?? '')
+      parent = p.parents?.[0]
+    } catch {
+      names.push('(shared folder)')
+      break
+    }
+  }
+  return { id: first.id!, path: ['My Drive', ...names.reverse()].join('/').slice(0, 1000) }
+}
+
+export async function listChildFolders(drive: drive_v3.Drive, parentId: string): Promise<Array<{ id: string; name: string }>> {
+  const out: Array<{ id: string; name: string }> = []
+  let pageToken: string | undefined
+  do {
+    const res = await drive.files.list({ q: `'${parentId}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`, fields: 'nextPageToken,files(id,name)', orderBy: 'name', pageSize: 1000, pageToken, spaces: 'drive' })
+    for (const f of res.data.files ?? []) if (f.id) out.push({ id: f.id, name: f.name ?? '' })
+    pageToken = res.data.nextPageToken ?? undefined
+  } while (pageToken)
+  return out
+}
+
+export async function createFolder(drive: drive_v3.Drive, parentId: string, name: string): Promise<{ id: string; name: string }> {
+  const res = await drive.files.create({ requestBody: { name, mimeType: FOLDER_MIME, parents: [parentId] }, fields: 'id,name' })
+  if (!res.data.id) throw new DriveHttpError('Folder was not created.', 502)
+  return { id: res.data.id, name: res.data.name ?? name }
+}

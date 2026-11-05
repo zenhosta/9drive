@@ -1,10 +1,13 @@
 import { Router } from 'express'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../../config/prisma.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { CATEGORY_KEYS, CATEGORY_LABELS, categoryWhere, classifyFile, type CategoryKey } from '../files/file-types.js'
 import { streamGoogleFile } from '../files/stream-google-file.js'
+import { getAuthedGoogleClient } from '../google/google.service.js'
+import { createFolder, listChildFolders, resolveFolder } from '../google/google-copy.js'
+import { google } from 'googleapis'
 import { isScanRunning, startScans } from './drive-scan.js'
 
 export const driveIndexRouter = Router()
@@ -134,6 +137,83 @@ driveIndexRouter.get('/select-by-size', async (req: AuthRequest, res, next) => {
       sum += item.sizeBytes
     }
     return res.json({ totalBytes: sum.toString(), count: picked.length, reachedTarget: sum >= target, files: picked.map(serialize) })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+// ---- Folder tree browsing (what the Drive looks like, merged across drives unless a drive is chosen) ----
+
+const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`)
+
+driveIndexRouter.get('/browse', async (req: AuthRequest, res, next) => {
+  try {
+    const q = z.object({
+      accountId: z.string().optional(),
+      path: z.string().max(1000).default('My Drive'),
+      sort: z.enum(['name', 'size', 'date']).default('name'),
+      order: z.enum(['asc', 'desc']).default('asc'),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(1).max(200).default(100),
+    }).parse(req.query)
+    const userId = req.user!.id
+    const path = q.path.replace(/\/+$/, '') || 'My Drive'
+    const account = q.accountId ? Prisma.sql`AND connected_account_id = ${q.accountId}` : Prisma.empty
+    const prefix = `${likeEscape(path)}/%`
+    const start = path.length + 2
+
+    const folderRows = await prisma.$queryRaw<Array<{ seg: string; c: bigint | number; s: bigint | number | null }>>`
+      SELECT SUBSTRING_INDEX(SUBSTRING(path, ${start}), '/', 1) AS seg, COUNT(*) AS c, COALESCE(SUM(size_bytes), 0) AS s
+      FROM drive_items
+      WHERE user_id = ${userId} ${account} AND path LIKE ${prefix}
+      GROUP BY seg ORDER BY seg`
+    const where: Prisma.DriveItemWhereInput = { userId, path, ...(q.accountId ? { connectedAccountId: q.accountId } : {}) }
+    const field = q.sort === 'size' ? 'sizeBytes' : q.sort === 'date' ? 'modifiedAt' : 'name'
+    const [total, items] = await Promise.all([
+      prisma.driveItem.count({ where }),
+      prisma.driveItem.findMany({ where, include: { connectedAccount: { select: accountSelect } }, orderBy: [{ [field]: q.order }, { id: 'asc' }], skip: (q.page - 1) * q.pageSize, take: q.pageSize }),
+    ])
+    return res.json({
+      path,
+      folders: folderRows.filter((r) => r.seg).map((r) => ({ name: r.seg, path: `${path}/${r.seg}`, count: Number(r.c), sizeBytes: String(r.s ?? 0) })),
+      page: q.page,
+      pageSize: q.pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / q.pageSize)),
+      files: items.map(serialize),
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+// ---- Destination folder picker (live view of the target Drive's folders) ----
+
+const driveId = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/)
+
+async function driveForAccount(userId: string, accountId: string) {
+  const account = await prisma.connectedAccount.findFirstOrThrow({ where: { id: accountId, userId, provider: 'google_drive', status: 'connected' } })
+  return google.drive({ version: 'v3', auth: await getAuthedGoogleClient(account) })
+}
+
+driveIndexRouter.get('/folders', async (req: AuthRequest, res, next) => {
+  try {
+    const q = z.object({ accountId: z.string().min(1), parentId: driveId.default('root') }).parse(req.query)
+    const drive = await driveForAccount(req.user!.id, q.accountId)
+    const folders = await listChildFolders(drive, q.parentId)
+    return res.json({ parentId: q.parentId, folders })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+driveIndexRouter.post('/folders', async (req: AuthRequest, res, next) => {
+  try {
+    const body = z.object({ accountId: z.string().min(1), parentId: driveId.default('root'), name: z.string().trim().min(1).max(255) }).parse(req.body)
+    const drive = await driveForAccount(req.user!.id, body.accountId)
+    const folder = await createFolder(drive, body.parentId, body.name)
+    const resolved = await resolveFolder(drive, folder.id)
+    return res.status(201).json({ folder: { id: folder.id, name: folder.name, path: resolved.path } })
   } catch (error) {
     return next(error)
   }
