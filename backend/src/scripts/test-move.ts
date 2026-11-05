@@ -140,8 +140,8 @@ async function runFull() {
         await drive.files.delete({ fileId: c.id })
       } catch { /* already gone */ }
     }
-    await prisma.moveJob.deleteMany({ where: { items: { some: { fileId: { in: cleanupFileIds } } } } })
-    await prisma.file.deleteMany({ where: { id: { in: cleanupFileIds } } })
+    await prisma.moveJob.deleteMany({ where: { items: { some: { fileId: { in: cleanupFileIds } } } } }).catch(() => undefined)
+    await prisma.file.deleteMany({ where: { id: { in: cleanupFileIds } } }).catch(() => undefined)
     await prisma.folder.delete({ where: { id: folder.id } }).catch(() => undefined)
     await Promise.allSettled([syncGoogleQuota(source.id), syncGoogleQuota(target.id)])
   }
@@ -184,6 +184,19 @@ async function runNative() {
     await prisma.file.deleteMany({ where: { id: { in: fileIds } } })
     await Promise.allSettled([syncGoogleQuota(source.id), syncGoogleQuota(target.id)])
   }
+}
+
+/** Removes any leftover 9drive-move-test-* files (Drive copy and DB row) from an aborted run. */
+async function cleanupStale() {
+  const files = await prisma.file.findMany({ where: { name: { startsWith: '9drive-move-test-' } }, include: { connectedAccount: true } })
+  for (const f of files) {
+    try { await (await driveOf(f.connectedAccountId)).drive.files.delete({ fileId: f.providerFileId }) } catch { /* already gone */ }
+    await prisma.moveJobItem.deleteMany({ where: { fileId: f.id } })
+    await prisma.file.delete({ where: { id: f.id } })
+    await syncGoogleQuota(f.connectedAccountId).catch(() => undefined)
+  }
+  await prisma.folder.deleteMany({ where: { name: { startsWith: 'move-test-' } } })
+  console.log(`removed ${files.length} leftover test file(s)`)
 }
 
 async function crashPrepare() {
@@ -233,6 +246,7 @@ async function main() {
   try {
     if (mode === 'full') await runFull()
     else if (mode === 'native') await runNative()
+    else if (mode === 'cleanup') await cleanupStale()
     else if (mode === 'crash-prepare') await crashPrepare()
     else if (mode === 'crash-verify' && arg) await crashVerify(arg)
     else throw new Error('usage: test-move.ts full | crash-prepare | crash-verify <jobId>')
