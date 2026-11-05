@@ -3,6 +3,10 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DriveLayout } from '@/layouts/DriveLayout'
 import { AllFilesPage } from '@/pages/AllFilesPage'
 import { ArchivedPage } from '@/pages/ArchivedPage'
+import { JobsPage } from '@/pages/JobsPage'
+import { RebalancePage } from '@/pages/RebalancePage'
+import { JobsProvider } from '@/context/JobsContext'
+import { JobsToast } from '@/components/drive/JobsToast'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { GoogleAuthPage } from '@/pages/GoogleAuthPage'
@@ -31,10 +35,12 @@ function App() {
       <Route path="public/files/:token" element={<PublicFilePage />} />
       <Route path="public/files/:token/embed" element={<PublicFilePage embed />} />
       <Route element={<ProtectedRoute />}>
-        <Route element={<DriveLayout />}>
+        <Route element={<JobsProvider><DriveLayout /><JobsToast /></JobsProvider>}>
           <Route index element={<Navigate to="/overview" replace />} />
           <Route path="overview" element={<OverviewPage />} />
           <Route path="all-files" element={<AllFilesPage />} />
+          <Route path="move-jobs" element={<JobsPage />} />
+          <Route path="rebalance" element={<RebalancePage />} />
           <Route path="quota" element={<QuotaTrackerPage />} />
           <Route path="shared" element={<SharedPage />} />
           <Route path="recent" element={<RecentPage />} />

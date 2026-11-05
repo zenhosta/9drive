@@ -1,7 +1,9 @@
+import { useNavigate } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Cloud, Database, Files, HardDrive, Link2, RefreshCw, Trash2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { useJobs } from '@/context/JobsContext'
 import { DummyModal } from '@/components/drive/DummyModal'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatBytes, formatDate } from '@/lib/api'
@@ -58,6 +60,8 @@ function UsageBar({ percent, label }: { percent: number; label: string }) {
 }
 
 export function OverviewPage() {
+  const navigate = useNavigate()
+  const { finishedVersion } = useJobs()
   const [data, setData] = useState<Overview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -82,7 +86,7 @@ export function OverviewPage() {
 
   useEffect(() => {
     load()
-  }, [load])
+  }, [load, finishedVersion])
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
@@ -293,7 +297,7 @@ export function OverviewPage() {
                     <p className="mt-3 text-xs text-slate-500">{account.lastSyncedAt ? `Quota synced ${formatDate(account.lastSyncedAt)}` : 'Quota never synced'}</p>
 
                     <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                      <Button variant="soft" size="sm" disabled title="Available after the move feature ships (Phase 2)"><Wrench className="h-4 w-4" />Free up space</Button>
+                      {account.provider === 'google_drive' ? <Button variant="soft" size="sm" onClick={() => navigate(`/rebalance?source=${account.id}`)}><Wrench className="h-4 w-4" />Free up space</Button> : null}
                       <Button variant="danger" size="sm" onClick={() => setToDisconnect(account)}><Trash2 className="h-4 w-4" />Disconnect</Button>
                     </div>
                   </Card>

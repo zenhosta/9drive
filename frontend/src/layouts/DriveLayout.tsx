@@ -1,6 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 import { Outlet, useOutletContext, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
+  ArrowRightLeft,
   Bell,
   Braces,
   FileArchive,
@@ -38,6 +39,7 @@ import { cn } from '@/lib/utils'
 const menu = [
   { label: 'Overview', icon: LayoutDashboard, href: '/overview' },
   { label: 'All Files', icon: FileArchive, href: '/all-files' },
+  { label: 'Jobs', icon: ArrowRightLeft, href: '/move-jobs' },
   { label: 'Quota Tracker', icon: Gauge, href: '/quota' },
   { label: 'Shared With Me', icon: Share2, href: '/shared' },
   { label: 'Starred', icon: Star, href: '/starred', disabled: true },

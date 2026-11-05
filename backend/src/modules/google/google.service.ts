@@ -150,10 +150,14 @@ export async function syncGoogleAppFolderFiles(accountId: string, userId: string
   let deleted = 0
 
   const folderIdMap = new Map(userFolders.map((f) => [f.providerFolderId, f.id]))
+  const accountFolderIds = new Set(userFolders.map((f) => f.id))
 
   for (const driveFile of driveFiles) {
-    const dbFolderId = driveFile.parentId === appFolderId ? null : (folderIdMap.get(driveFile.parentId) ?? null)
     const existing = existingByProviderId.get(driveFile.id)
+    let dbFolderId = driveFile.parentId === appFolderId ? null : (folderIdMap.get(driveFile.parentId) ?? null)
+    // A file moved here from another drive sits in this drive's root but keeps its virtual folder in 9Drive;
+    // don't reset it to "no folder" just because that folder isn't mirrored on this account.
+    if (dbFolderId === null && existing?.folderId && !accountFolderIds.has(existing.folderId)) dbFolderId = existing.folderId
     if (!existing) {
       await prisma.file.create({
         data: { userId, connectedAccountId: account.id, provider: 'google_drive', providerFileId: driveFile.id, name: driveFile.name, mimeType: driveFile.mimeType, sizeBytes: driveFile.sizeBytes, status: 'active', folderId: dbFolderId },

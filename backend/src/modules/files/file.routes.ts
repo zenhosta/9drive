@@ -13,6 +13,7 @@ import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { Readable } from 'node:stream'
 import { ZipArchive } from 'archiver'
 import { createAuditLog } from '../../utils/audit.js'
+import { createMoveJob, JobRequestError } from '../jobs/job.service.js'
 
 
 
@@ -86,6 +87,25 @@ fileRouter.get('/', async (req: AuthRequest, res, next) => {
     })
     return res.json({ files: files.map((file) => ({ ...file, sizeBytes: file.sizeBytes.toString() })) })
   } catch (error) {
+    return next(error)
+  }
+})
+
+const moveToAccountSchema = z.object({
+  fileIds: z.array(z.string().min(1)).min(1).max(500),
+  targetAccountId: z.string().min(1),
+  includeNative: z.boolean().default(false),
+  nativeFormat: z.enum(['native', 'office']).default('native'),
+})
+
+fileRouter.post('/move-to-account', async (req: AuthRequest, res, next) => {
+  try {
+    const body = moveToAccountSchema.parse(req.body)
+    const result = await createMoveJob(req.user!.id, 'move', body.fileIds.map((fileId) => ({ fileId, targetAccountId: body.targetAccountId })), { includeNative: body.includeNative, nativeFormat: body.nativeFormat })
+    await createAuditLog(req.user!.id, 'MOVE_FILES_TO_ACCOUNT', 'move_job', result.job.id, { count: result.accepted, targetAccountId: body.targetAccountId })
+    return res.status(202).json({ jobId: result.job.id, accepted: result.accepted, skipped: result.skipped, warnings: result.warnings })
+  } catch (error) {
+    if (error instanceof JobRequestError) return res.status(error.status).json({ code: error.code, message: error.message, details: error.details })
     return next(error)
   }
 })

@@ -30,6 +30,7 @@ model User {
   workspaceInvitesSent WorkspaceInvite[] @relation("WorkspaceInvitesSent")
   uploadRoutingPolicy UploadRoutingPolicy?
   apiKeys       ApiKey[]
+  moveJobs      MoveJob[]
 
   @@map("users")
 }
@@ -350,4 +351,54 @@ model WorkspaceInvite {
   @@index([inviteeEmail])
   @@index([targetType, targetId])
   @@map("workspace_invites")
+}
+
+model MoveJob {
+  id              String        @id @default(uuid()) @db.Char(36)
+  userId          String        @map("user_id") @db.Char(36)
+  type            String        @default("move") @db.VarChar(32)
+  status          String        @default("queued") @db.VarChar(32)
+  options         Json
+  totalItems      Int           @default(0) @map("total_items")
+  doneItems       Int           @default(0) @map("done_items")
+  failedItems     Int           @default(0) @map("failed_items")
+  skippedItems    Int           @default(0) @map("skipped_items")
+  totalBytes      BigInt        @default(0) @map("total_bytes")
+  movedBytes      BigInt        @default(0) @map("moved_bytes")
+  cancelRequested Boolean       @default(false) @map("cancel_requested")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  startedAt       DateTime?     @map("started_at")
+  finishedAt      DateTime?     @map("finished_at")
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items           MoveJobItem[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("move_jobs")
+}
+
+model MoveJobItem {
+  id                   String   @id @default(uuid()) @db.Char(36)
+  jobId                String   @map("job_id") @db.Char(36)
+  fileId               String   @map("file_id") @db.Char(36)
+  fileName             String   @map("file_name") @db.VarChar(255)
+  sourceAccountId      String   @map("source_account_id") @db.Char(36)
+  targetAccountId      String   @map("target_account_id") @db.Char(36)
+  sourceProviderFileId String   @map("source_provider_file_id") @db.VarChar(191)
+  targetProviderFileId String?  @map("target_provider_file_id") @db.VarChar(191)
+  bytes                BigInt   @default(0)
+  status               String   @default("queued") @db.VarChar(32)
+  step                 String   @default("pending") @db.VarChar(32)
+  attempts             Int      @default(0)
+  error                String?  @db.Text
+  note                 String?  @db.Text
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  job                  MoveJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([status, createdAt])
+  @@index([fileId])
+  @@map("move_job_items")
 }

@@ -4,6 +4,10 @@ import { prisma } from '../../config/prisma.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { syncGoogleQuota } from '../google/google.service.js'
 import { syncS3Quota } from '../s3/s3.service.js'
+import { createAuditLog } from '../../utils/audit.js'
+import { createMoveJob, JobRequestError } from '../jobs/job.service.js'
+import { isNativeGoogleMime } from '../jobs/move-logic.js'
+import { buildPlan, type PlanAccount } from './rebalance-plan.js'
 
 export const storageRouter = Router()
 storageRouter.use(requireAuth)
@@ -206,6 +210,90 @@ storageRouter.post('/overview/refresh', async (req: AuthRequest, res, next) => {
     }))
     return res.json({ results, overview: await loadOverview(req.user!.id) })
   } catch (error) {
+    return next(error)
+  }
+})
+
+const bytesString = z.string().regex(/^\d+$/)
+const planSchema = z.object({
+  sourceAccountId: z.string().min(1),
+  targetAccountIds: z.array(z.string().min(1)).max(50).optional(),
+  freeUpBytes: bytesString.optional(),
+  targetUsedPercent: z.number().min(1).max(99).optional(),
+})
+
+function toPlanAccount(a: { id: string; email: string; storageAccount: { totalBytes: bigint | null; usedBytes: bigint; availableBytes: bigint | null } | null }): PlanAccount {
+  return { id: a.id, email: a.email, totalBytes: a.storageAccount?.totalBytes ?? null, usedBytes: a.storageAccount?.usedBytes ?? 0n, availableBytes: a.storageAccount?.availableBytes ?? null }
+}
+
+storageRouter.post('/rebalance/plan', async (req: AuthRequest, res, next) => {
+  try {
+    const body = planSchema.parse(req.body)
+    if ((body.freeUpBytes === undefined) === (body.targetUsedPercent === undefined)) return res.status(400).json({ code: 'PLAN_INVALID', message: 'Provide exactly one of freeUpBytes or targetUsedPercent.' })
+    const userId = req.user!.id
+    const source = await prisma.connectedAccount.findFirst({ where: { id: body.sourceAccountId, userId, provider: 'google_drive', status: 'connected' } })
+    if (!source) return res.status(404).json({ code: 'SOURCE_NOT_FOUND', message: 'Source must be a connected Google Drive account.' })
+    const targetRows = await prisma.connectedAccount.findMany({ where: { userId, provider: 'google_drive', status: 'connected', id: { not: source.id, ...(body.targetAccountIds ? { in: body.targetAccountIds } : {}) } } })
+    if (targetRows.length === 0) return res.status(400).json({ code: 'NO_TARGETS', message: 'No other connected Google Drive accounts to move files to.' })
+
+    const quotaFailures: string[] = []
+    await Promise.all([source, ...targetRows].map((a) => syncGoogleQuota(a.id).catch(() => quotaFailures.push(a.email))))
+    const [freshSource, freshTargets] = await Promise.all([
+      prisma.connectedAccount.findUniqueOrThrow({ where: { id: source.id }, include: { storageAccount: true } }),
+      prisma.connectedAccount.findMany({ where: { id: { in: targetRows.map((t) => t.id) } }, include: { storageAccount: true } }),
+    ])
+    const planSource = toPlanAccount(freshSource)
+    if (body.targetUsedPercent !== undefined && !planSource.totalBytes) return res.status(400).json({ code: 'PLAN_INVALID', message: 'This drive has no known capacity, so a target percentage cannot be used. Enter an amount to free instead.' })
+
+    const files = await prisma.file.findMany({ where: { userId, connectedAccountId: source.id, provider: 'google_drive', status: 'active' }, select: { id: true, name: true, sizeBytes: true, mimeType: true } })
+    const plan = buildPlan({
+      source: planSource,
+      targets: freshTargets.map(toPlanAccount),
+      files: files.map((f) => ({ id: f.id, name: f.name, sizeBytes: f.sizeBytes, isNative: isNativeGoogleMime(f.mimeType) })),
+      freeUpBytes: body.freeUpBytes !== undefined ? BigInt(body.freeUpBytes) : undefined,
+      targetUsedPercent: body.targetUsedPercent,
+    })
+    if (quotaFailures.length > 0) plan.warnings.unshift(`Could not refresh quota for: ${quotaFailures.join(', ')}. Numbers for those drives may be out of date.`)
+    // Drive usage includes things 9Drive doesn't track; the plan can only move files 9Drive knows about.
+    const knownBytes = files.reduce((s, f) => s + f.sizeBytes, 0n)
+    if (plan.needBytes > knownBytes) plan.warnings.push('You asked to free more than the files 9Drive tracks on this drive. Run "Sync Drive" in All Files if files were added outside 9Drive.')
+
+    const emailById = new Map([freshSource, ...freshTargets].map((a) => [a.id, a.email]))
+    return res.json({
+      sourceAccountId: source.id,
+      needBytes: plan.needBytes.toString(),
+      plannedBytes: plan.plannedBytes.toString(),
+      shortfallBytes: plan.shortfallBytes.toString(),
+      nativeExcluded: plan.nativeExcluded,
+      warnings: plan.warnings,
+      items: plan.items.map((i) => ({ fileId: i.fileId, name: i.name, sizeBytes: i.sizeBytes.toString(), targetAccountId: i.targetAccountId, targetEmail: emailById.get(i.targetAccountId) })),
+      unplaced: plan.unplaced.map((u) => ({ ...u, sizeBytes: u.sizeBytes.toString() })),
+      accounts: plan.accounts.map((a) => ({
+        id: a.id, email: a.email, role: a.id === source.id ? 'source' : 'target',
+        totalBytes: a.totalBytes?.toString() ?? null, usedBefore: a.usedBefore.toString(), usedAfter: a.usedAfter.toString(),
+        availableBefore: a.availableBefore?.toString() ?? null, availableAfter: a.availableAfter?.toString() ?? null,
+        filesIn: a.filesIn, filesOut: a.filesOut,
+      })),
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+const executeSchema = z.object({
+  sourceAccountId: z.string().min(1),
+  items: z.array(z.object({ fileId: z.string().min(1), targetAccountId: z.string().min(1) })).min(1).max(5000),
+})
+
+// The plan is not trusted: every file, account and the free space is re-validated when the job is created.
+storageRouter.post('/rebalance/execute', async (req: AuthRequest, res, next) => {
+  try {
+    const body = executeSchema.parse(req.body)
+    const result = await createMoveJob(req.user!.id, 'rebalance', body.items, { includeNative: false, nativeFormat: 'native' }, body.sourceAccountId)
+    await createAuditLog(req.user!.id, 'REBALANCE_STARTED', 'move_job', result.job.id, { sourceAccountId: body.sourceAccountId, count: result.accepted })
+    return res.status(202).json({ jobId: result.job.id, accepted: result.accepted, skipped: result.skipped, warnings: result.warnings })
+  } catch (error) {
+    if (error instanceof JobRequestError) return res.status(error.status).json({ code: error.code, message: error.message, details: error.details })
     return next(error)
   }
 })
