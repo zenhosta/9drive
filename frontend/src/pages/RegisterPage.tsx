@@ -29,7 +29,14 @@ export function RegisterPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [registrationOpen, setRegistrationOpen] = useState(true)
   const recaptchaRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    apiFetch<{ open: boolean }>('/auth/registration', { skipAuth: true })
+      .then((data) => setRegistrationOpen(data.open))
+      .catch(() => undefined)
+  }, [])
   const recaptchaWidgetId = useRef<number | null>(null)
 
   useEffect(() => {
@@ -103,12 +110,13 @@ export function RegisterPage() {
           <label className="grid gap-2 text-sm font-semibold">Email<Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
           <label className="grid gap-2 text-sm font-semibold">Password<Input type="password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           {recaptchaSiteKey ? <div className="min-h-[78px] overflow-hidden rounded-xl bg-slate-50 p-2"><div ref={recaptchaRef} /></div> : null}
+          {!registrationOpen ? <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-700">Registration is disabled on this server. Ask the administrator to create your account.</p> : null}
           {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p> : null}
-          <Button disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</Button>
+          <Button disabled={loading || !registrationOpen}>{loading ? 'Creating...' : 'Create Account'}</Button>
         </form>
         <div className="mt-4 grid gap-3">
           <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-wide text-slate-400"><span className="h-px flex-1 bg-slate-200" />or<span className="h-px flex-1 bg-slate-200" /></div>
-          <Button variant="outline" disabled={googleLoading} onClick={continueWithGoogle}><GoogleLogo />{googleLoading ? 'Redirecting...' : 'Continue with Google and connect Drive'}</Button>
+          <Button variant="outline" disabled={googleLoading || !registrationOpen} onClick={continueWithGoogle}><GoogleLogo />{googleLoading ? 'Redirecting...' : 'Continue with Google and connect Drive'}</Button>
         </div>
         <p className="mt-5 text-center text-sm text-slate-500">Already registered? <Link className="font-bold text-blue-600" to="/login">Login</Link></p>
       </Card>

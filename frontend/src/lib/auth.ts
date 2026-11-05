@@ -3,6 +3,7 @@ export type AuthUser = {
   name: string
   email: string
   status?: string
+  role?: 'admin' | 'user'
 }
 
 const ACCESS_TOKEN_KEY = '9drive.accessToken'

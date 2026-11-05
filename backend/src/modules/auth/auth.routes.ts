@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword } from '../../utils/password.js'
 import { encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { signAccessToken } from '../../utils/jwt.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
+import { findOrCreateGoogleUser, isRegistrationOpen, roleForNewUser } from './registration.js'
 
 export const authRouter = Router()
 
@@ -40,15 +41,24 @@ async function verifyCaptcha(token: string | undefined) {
   return Boolean(data.success)
 }
 
+authRouter.get('/registration', async (_req, res, next) => {
+  try {
+    return res.json({ open: await isRegistrationOpen() })
+  } catch (error) {
+    return next(error)
+  }
+})
+
 authRouter.post('/register', async (req, res, next) => {
   try {
     const body = registerSchema.parse(req.body)
+    if (!(await isRegistrationOpen())) return res.status(403).json({ code: 'REGISTRATION_DISABLED', message: 'Registration is disabled on this server.' })
     if (!(await verifyCaptcha(body.captchaToken))) return res.status(400).json({ code: 'CAPTCHA_FAILED', message: 'Captcha verification failed.' })
     const existing = await prisma.user.findUnique({ where: { email: body.email } })
     if (existing) return res.status(409).json({ code: 'AUTH_EMAIL_TAKEN', message: 'Email already registered.' })
-    const user = await prisma.user.create({ data: { name: body.name, email: body.email, passwordHash: await hashPassword(body.password) } })
+    const user = await prisma.user.create({ data: { name: body.name, email: body.email, passwordHash: await hashPassword(body.password), role: await roleForNewUser() } })
     const tokens = await createSession(user.id, req)
-    return res.status(201).json({ ...tokens, user: { id: user.id, name: user.name, email: user.email } })
+    return res.status(201).json({ ...tokens, user: { id: user.id, name: user.name, email: user.email, role: user.role } })
   } catch (error) {
     return next(error)
   }
@@ -60,7 +70,7 @@ authRouter.post('/login', async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { email: body.email } })
     if (!user || !(await verifyPassword(user.passwordHash, body.password))) return res.status(401).json({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid email or password.' })
     const tokens = await createSession(user.id, req)
-    return res.json({ ...tokens, user: { id: user.id, name: user.name, email: user.email } })
+    return res.json({ ...tokens, user: { id: user.id, name: user.name, email: user.email, role: user.role } })
   } catch (error) {
     return next(error)
   }
@@ -104,11 +114,8 @@ authRouter.get('/google/callback', async (req, res) => {
     if (!providerAccountId || !email) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
 
     const name = profile.data.name || email.split('@')[0] || 'Google User'
-    const user = await prisma.user.upsert({
-      where: { email },
-      create: { email, name, passwordHash: await hashPassword(randomToken(32)) },
-      update: { name },
-    })
+    const user = await findOrCreateGoogleUser(email, name)
+    if (!user) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error&reason=registration_disabled`)
     const existingAccount = await prisma.connectedAccount.findUnique({ where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } } })
     const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
     if (!refreshTokenEncrypted) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
@@ -161,7 +168,7 @@ authRouter.post('/google/exchange', async (req, res, next) => {
     if (!handoff) return res.status(401).json({ code: 'AUTH_GOOGLE_HANDOFF_INVALID', message: 'Google login session expired.' })
     await prisma.authHandoff.update({ where: { id: handoff.id }, data: { usedAt: new Date() } })
     const tokens = await createSession(handoff.userId, req)
-    return res.json({ ...tokens, user: { id: handoff.user.id, name: handoff.user.name, email: handoff.user.email } })
+    return res.json({ ...tokens, user: { id: handoff.user.id, name: handoff.user.name, email: handoff.user.email, role: handoff.user.role } })
   } catch (error) {
     return next(error)
   }
@@ -189,7 +196,7 @@ authRouter.post('/logout', requireAuth, async (req: AuthRequest, res, next) => {
 
 authRouter.get('/me', requireAuth, async (req: AuthRequest, res, next) => {
   try {
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id }, select: { id: true, name: true, email: true, status: true } })
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id }, select: { id: true, name: true, email: true, status: true, role: true } })
     return res.json({ user })
   } catch (error) {
     return next(error)

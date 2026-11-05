@@ -5,7 +5,7 @@ import { env } from '../../config/env.js'
 import { prisma } from '../../config/prisma.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { decryptText, encryptText, hashToken, randomToken } from '../../utils/crypto.js'
-import { hashPassword } from '../../utils/password.js'
+import { findOrCreateGoogleUser } from '../auth/registration.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
 import { syncS3Quota, testS3Connection } from '../s3/s3.service.js'
 
@@ -192,11 +192,8 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
 
     if (oauthState.flow === 'login') {
       const name = profile.data.name || email.split('@')[0] || 'Google User'
-      const user = await prisma.user.upsert({
-        where: { email },
-        create: { email, name, passwordHash: await hashPassword(randomToken(32)) },
-        update: { name },
-      })
+      const user = await findOrCreateGoogleUser(email, name)
+      if (!user) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error&reason=registration_disabled`)
       const existingAccount = await prisma.connectedAccount.findUnique({ where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } } })
       const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
       if (!refreshTokenEncrypted) {

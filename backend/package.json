@@ -10,6 +10,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
+    "user:set-role": "tsx src/scripts/set-user-role.ts",
     "seed:google-config": "tsx src/scripts/seed-google-config.ts",
     "seed:google-config:docker": "tsx src/scripts/seed-google-config-if-present.ts",
     "test:s3": "tsx src/scripts/test-s3-connection.ts",
