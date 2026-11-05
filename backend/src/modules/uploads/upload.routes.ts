@@ -16,6 +16,14 @@ export const uploadRouter = Router()
 type UploadMeta = { fieldName: string; fileName: string; mimeType: string; sizeBytes: bigint; folderId?: string }
 type RoutingMode = 'most_available' | 'round_robin' | 'priority'
 
+const batchMetaSchema = z.array(z.object({
+  fieldName: z.string(),
+  fileName: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()]).transform((value) => BigInt(value)),
+  folderId: z.string().nullish().transform((value) => value ?? undefined),
+}))
+
 function logUpload(message: string, metadata?: Record<string, unknown>) {
   console.info('[upload]', message, metadata ?? '')
 }
@@ -128,13 +136,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
       return res.status(status).json({ code, message })
     }
 
-    const parseBatchMeta = (value: string) => JSON.parse(value).map((item: { fieldName: string; fileName: string; mimeType: string; sizeBytes: string | number; folderId?: string }) => ({
-      fieldName: item.fieldName,
-      fileName: item.fileName,
-      mimeType: item.mimeType,
-      sizeBytes: BigInt(item.sizeBytes),
-      folderId: item.folderId,
-    })) as UploadMeta[]
+    const parseBatchMeta = (value: string): UploadMeta[] => batchMetaSchema.parse(JSON.parse(value))
 
     const metaForFile = (fieldName: string, info: { filename: string; mimeType: string }) => {
       if (batchMeta) return batchMeta.find((item) => item.fieldName === fieldName)
@@ -263,15 +265,24 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
     }
 
     busboy.on('field', (name, value) => {
-      if (name === 'sizeBytes') fields.sizeBytes = BigInt(value)
-      if (name === 'fileName') fields.fileName = value
-      if (name === 'mimeType') fields.mimeType = value
-      if (name === 'folderId') fields.folderId = value
-      if (name === 'filesMeta') batchMeta = parseBatchMeta(value)
+      // Listeners run outside this function's try/catch, so an uncaught throw here stops the process.
+      try {
+        if (name === 'sizeBytes') fields.sizeBytes = BigInt(value)
+        if (name === 'fileName') fields.fileName = value
+        if (name === 'mimeType') fields.mimeType = value
+        if (name === 'folderId') fields.folderId = value
+        if (name === 'filesMeta') batchMeta = parseBatchMeta(value)
+      } catch {
+        void fail(400, 'UPLOAD_INVALID_METADATA', 'Upload metadata is invalid.')
+      }
     })
 
     busboy.on('file', (name, fileStream, info) => {
       fileSeen = true
+      if (responded) {
+        fileStream.resume()
+        return
+      }
       pendingUploads.push(uploadOne(name, fileStream, info))
     })
 
