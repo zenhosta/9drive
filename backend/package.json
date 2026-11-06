@@ -13,7 +13,8 @@
     "seed:google-config": "tsx src/scripts/seed-google-config.ts",
     "seed:google-config:docker": "tsx src/scripts/seed-google-config-if-present.ts",
     "test:s3": "tsx src/scripts/test-s3-connection.ts",
-    "test:api-upload": "tsx src/scripts/test-api-upload.ts"
+    "test:api-upload": "tsx src/scripts/test-api-upload.ts",
+    "test": "tsx --test src/modules/jobs/move-logic.test.ts src/modules/storage/rebalance-plan.test.ts src/modules/files/file-types.test.ts src/modules/drive-index/drive-scan.test.ts src/modules/drive-index/thumb-cache.test.ts"
   },
   "keywords": [],
   "author": "",

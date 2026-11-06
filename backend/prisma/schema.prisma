@@ -30,6 +30,8 @@ model User {
   workspaceInvitesSent WorkspaceInvite[] @relation("WorkspaceInvitesSent")
   uploadRoutingPolicy UploadRoutingPolicy?
   apiKeys       ApiKey[]
+  moveJobs      MoveJob[]
+  driveItems    DriveItem[]
 
   @@map("users")
 }
@@ -157,6 +159,8 @@ model ConnectedAccount {
   folders               Folder[]
   uploadSessions        UploadSession[]
   s3StorageConfig       S3StorageConfig?
+  driveItems            DriveItem[]
+  driveScan             DriveScan?
 
   @@unique([userId, provider, providerAccountId])
   @@index([userId])
@@ -230,6 +234,7 @@ model File {
   @@index([connectedAccountId])
   @@index([folderId])
   @@index([providerFileId])
+  @@index([userId, status, mimeType])
   @@map("files")
 }
 
@@ -350,4 +355,97 @@ model WorkspaceInvite {
   @@index([inviteeEmail])
   @@index([targetType, targetId])
   @@map("workspace_invites")
+}
+
+model MoveJob {
+  id              String        @id @default(uuid()) @db.Char(36)
+  userId          String        @map("user_id") @db.Char(36)
+  type            String        @default("move") @db.VarChar(32)
+  status          String        @default("queued") @db.VarChar(32)
+  options         Json
+  totalItems      Int           @default(0) @map("total_items")
+  doneItems       Int           @default(0) @map("done_items")
+  failedItems     Int           @default(0) @map("failed_items")
+  skippedItems    Int           @default(0) @map("skipped_items")
+  totalBytes      BigInt        @default(0) @map("total_bytes")
+  movedBytes      BigInt        @default(0) @map("moved_bytes")
+  cancelRequested Boolean       @default(false) @map("cancel_requested")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  startedAt       DateTime?     @map("started_at")
+  finishedAt      DateTime?     @map("finished_at")
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items           MoveJobItem[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("move_jobs")
+}
+
+model MoveJobItem {
+  id                   String   @id @default(uuid()) @db.Char(36)
+  jobId                String   @map("job_id") @db.Char(36)
+  fileId               String?  @map("file_id") @db.Char(36)
+  driveItemId          String?  @map("drive_item_id") @db.Char(36)
+  fileName             String   @map("file_name") @db.VarChar(255)
+  sourceAccountId      String   @map("source_account_id") @db.Char(36)
+  targetAccountId      String   @map("target_account_id") @db.Char(36)
+  sourceProviderFileId String   @map("source_provider_file_id") @db.VarChar(191)
+  targetProviderFileId String?  @map("target_provider_file_id") @db.VarChar(191)
+  targetSubpath        String?  @map("target_subpath") @db.VarChar(1024)
+  bytes                BigInt   @default(0)
+  status               String   @default("queued") @db.VarChar(32)
+  step                 String   @default("pending") @db.VarChar(32)
+  attempts             Int      @default(0)
+  error                String?  @db.Text
+  note                 String?  @db.Text
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  job                  MoveJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([status, createdAt])
+  @@index([fileId])
+  @@index([driveItemId])
+  @@map("move_job_items")
+}
+
+// Index of every file the user owns in a connected Drive, wherever it lives (not just the 9drive folder).
+model DriveItem {
+  id                 String           @id @default(uuid()) @db.Char(36)
+  userId             String           @map("user_id") @db.Char(36)
+  connectedAccountId String           @map("connected_account_id") @db.Char(36)
+  providerFileId     String           @map("provider_file_id") @db.VarChar(191)
+  name               String           @db.VarChar(255)
+  mimeType           String           @map("mime_type") @db.VarChar(191)
+  sizeBytes          BigInt           @map("size_bytes")
+  md5                String?          @db.VarChar(64)
+  path               String           @db.VarChar(1024)
+  modifiedAt         DateTime?        @map("modified_at")
+  scanId             String           @map("scan_id") @db.Char(36)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([connectedAccountId, providerFileId])
+  @@index([userId, mimeType])
+  @@index([userId, sizeBytes])
+  @@index([connectedAccountId, sizeBytes])
+  @@index([connectedAccountId, scanId])
+  @@map("drive_items")
+}
+
+model DriveScan {
+  id                 String           @id @default(uuid()) @db.Char(36)
+  connectedAccountId String           @unique @map("connected_account_id") @db.Char(36)
+  status             String           @default("idle") @db.VarChar(32)
+  scanId             String?          @map("scan_id") @db.Char(36)
+  itemsFound         Int              @default(0) @map("items_found")
+  error              String?          @db.Text
+  startedAt          DateTime?        @map("started_at")
+  finishedAt         DateTime?        @map("finished_at")
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@map("drive_scans")
 }

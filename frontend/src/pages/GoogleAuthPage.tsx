@@ -23,7 +23,7 @@ export function GoogleAuthPage() {
     apiFetch<AuthResponse>('/auth/google/exchange', { method: 'POST', skipAuth: true, body: JSON.stringify({ token }) })
       .then((data) => {
         setAuthSession(data.accessToken, data.refreshToken, data.user)
-        navigate('/all-files', { replace: true })
+        navigate('/overview', { replace: true })
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Google sign-in failed. Please try again.'))
   }, [navigate, status, token])

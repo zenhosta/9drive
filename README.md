@@ -246,6 +246,74 @@ Either way, the credentials are encrypted and stored in MySQL as one global conf
 
 </details>
 
+## Overview, moving files between drives, and files by type
+
+**Overview** (`/overview`, the landing page) shows every connected drive on one page: used, free and total space with a colour state (normal below 70%, warning from 70% to 90%, critical above 90%), how many files 9Drive stores on it, last quota sync, connection health, and per-drive **Sync quota**, **Reconnect**, **Free up space** and **Disconnect** actions. **Refresh all** syncs every drive in parallel and reports failures per drive. "Used" is the whole Google account (including things 9Drive doesn't track and the Drive trash); "stored by 9Drive" counts only files in 9Drive's database.
+
+**Move to drive**: select files in All Files or Files by Type (or right-click one) and choose *Move to drive...*. **Free up space** on an Overview card opens the **rebalance wizard**: pick a source drive, say how much to free (GB or a target percentage), pick target drives or leave it on automatic, review a dry-run plan with before/after bars, then confirm. Progress shows at the bottom left and on the **Jobs** page, where jobs can be cancelled and failed files retried.
+
+How a single file moves:
+
+1. The target's quota is refreshed and checked (100 MB safety margin; rebalance never fills a target past 90%).
+2. The file is streamed from the source Drive straight into a resumable upload on the target's `9drive` folder. Nothing is written to disk. Copies are tagged with the job item so a crash can adopt a finished copy instead of uploading a duplicate.
+3. The copy is verified (size, plus md5 when Drive provides one).
+4. Only then is the 9Drive record pointed at the new copy. The 9Drive file ID, name, virtual folder, share links and preview links do not change.
+5. Only after that is the original permanently deleted from the source Drive. If permanent delete is refused, the original is moved to that Drive's trash and the job notes it (the whole trash is never emptied).
+6. If anything fails before step 4, the partial copy is removed and the original is left untouched.
+
+Good to know:
+
+- Only Google Drive to Google Drive is supported. S3 accounts cannot be a source or a target.
+- Two files at a time per worker (3 workers), with exponential backoff on 403/429/5xx. Jobs survive a backend restart: interrupted items are re-queued and resume from their saved step. The worker assumes a single backend process.
+- Google caps uploads at roughly 750 GB per day per account. Plans warn when a target would receive more.
+- **Google Docs, Sheets and Slides are skipped by default.** They count for little or no quota, so moving them frees almost nothing. If you opt in they are exported and re-uploaded (Docs/Sheets/Slides back into editable Google format, or as .docx/.xlsx/.pptx; Drawings always become PNG). This gives them a new Drive file ID and loses Google-side revision history, comments and Google sharing. Google limits exports to about 10 MB, and larger files are marked failed and left untouched. Forms, scripts, sites and shortcuts cannot be moved.
+- Moved files get the same "anyone with the link" permission that uploads get, so existing link behaviour keeps working.
+- A file keeps its virtual folder when it moves. If that folder is tied to a particular drive, new uploads to that folder still go to that drive.
+- Drive allows duplicate names, so a moved file keeps its exact name even if the target already has a file called the same.
+
+**Files by type** (`/files-by-type`) is a file browser for the whole of every connected Google Drive, not just the `9drive` folder. Click **Scan drives** once (and again whenever files change outside 9Drive). The scan reads names, sizes, MIME types and folder paths of every file you own and stores them in the `drive_items` table; it downloads nothing and skips files that only live in someone else's Drive. Then you can:
+
+- pick a drive chip to see only that drive (each chip shows its file count and size), and pick a type tab: All, Images, Videos, Audio, Documents, Spreadsheets, Presentations, Archives, Code, Other (counts and sizes per tab);
+- search by name or folder, filter by minimum size, sort by size, name, date or folder, and switch between list and grid (image thumbnails load lazily for small images);
+- tick files, or use **Select the largest files totalling N GB** (within the current drive and type filters), then **Move to drive**. Download and *Open in Google Drive* work on a single file.
+
+**All Files** (`/all-files`) opens on the same index as a real folder tree: click through the folders of your drives (merged across drives, or one drive at a time), search by name across every folder, select files and move them. The original view of uploads and 9Drive virtual folders is still there under the *Uploads & folders* tab. New uploads appear in the drive view straight away.
+
+**Open a drive like Google Drive.** Click a drive chip (or *Browse files* on an Overview card) to open `/drives/<drive>`: that drive's folders as a tree with breadcrumbs, a **List / Grid** switch, thumbnails (photos, videos, PDFs and documents, from Google's own previews), search, sorting, and checkboxes on files **and folders**. **Select all** selects everything in the current folder or search across all pages (up to 5,000 files). With a selection you can:
+
+- **Move to drive** or **Copy to drive** (a copy leaves the original). Folders keep their structure: moving or copying `Photos` creates `Photos/...` in the destination and merges into a folder that already has that name. Only files are transferred, so empty folders are not recreated.
+- **Delete**, either to the Drive trash (recoverable in Google Drive for 30 days, still counts toward storage until emptied) or permanently, after a confirmation. Deleting a folder deletes the files inside it and leaves the empty folder. Deletes run as jobs with progress, cancel and retry.
+- **Preview**: double-click a file (or click its name or thumbnail, or use the row's ⋯ menu) to open a full-screen viewer for images, video, audio and PDFs (Google Docs/Sheets/Slides show as PDF), with previous/next (←/→) and Esc to close. Other file types open in Google Drive. Preview links are signed, expire after 20 minutes and work only for that file.
+- Download a single file, or open it in Google Drive.
+- Every row and folder card has a **⋯** menu (Preview, Move, Copy, Download, Open in Google Drive, Delete). The Move / Copy / Delete buttons stay visible above the list and enable once something is selected.
+
+When you move files, the dialog lets you pick the **destination folder** in the target drive: the default `9drive` folder, any existing folder (click through the tree), or a new folder you create at the current level (including inside another folder). Sync Drive no longer marks a 9Drive-tracked file as deleted just because it sits outside the `9drive` folder; it asks Drive whether the file still exists. Files that 9Drive already tracks keep their share links and virtual folder. The rebalance wizard also uses this index, so "free up 5 GB" can pick from every file on the drive; it asks you to scan the source drive first. Owned file sizes do not exactly match Google's quota number (Gmail, Photos, trash and revisions count there), so a plan can free less or more than the number it shows.
+
+Files are classified by MIME type first, then by extension; edit the lists in `backend/src/modules/files/file-types.ts` to change the grouping.
+
+New API endpoints (all need a normal login): `GET /storage/overview`, `POST /storage/overview/refresh`, `POST /files/move-to-account`, `POST /storage/rebalance/plan`, `POST /storage/rebalance/execute`, `GET /jobs`, `GET /jobs/:id`, `POST /jobs/:id/cancel`, `POST /jobs/:id/retry`, `POST /drive-index/scan`, `GET /drive-index/scan`, `GET /drive-index`, `GET /drive-index/browse`, `GET /drive-index/folders`, `POST /drive-index/folders`, `GET /drive-index/summary`, `GET /drive-index/select-by-size`, `GET /drive-index/:id/download`, `GET /drive-index/:id/thumb`, `POST /drive-index/delete`, plus the tracked-files variants `GET /files/by-type`, `GET /files/by-type/summary` and `POST /files/preview-tokens`.
+
+Migrations for these features are additive (`move_jobs`, `move_job_items` with `target_subpath`, `drive_items`, `drive_scans`, one index on `files`, and `move_job_items.file_id` becomes nullable) and apply automatically when the backend starts. Back up the database first as with any upgrade.
+
+**Thumbnail cache.** Thumbnails are kept on the backend's disk (`/tmp/9drive-thumbs`) so scrolling does not re-download them from Google. An entry is deleted after 7 days without use, the cache never exceeds 1 GiB (the least recently used entries are deleted first and the recent ones are kept), and a file's thumbnail is dropped when the file is deleted or moved. Tune with `THUMB_CACHE_MAX_MB` and `THUMB_CACHE_TTL_DAYS`; the cache is safe to lose.
+
+**Updates show up on their own.** nginx no longer lets browsers cache the app shell (`index.html`, `sw.js`), and the app reloads once when a new version is installed. The sidebar shows the build time so you can tell which version you are on.
+
+Tests: `cd backend && npm test` runs the unit tests (move rules, rebalance planner, file classification). `npx tsx src/scripts/test-move.ts full|native|index|scan-all|cleanup` and `npx tsx src/scripts/test-drive-api.ts` and `npx tsx src/scripts/test-file-types.ts` are live checks that create small throwaway files on your connected drives and remove them afterwards.
+
+## Starting 9Drive from any terminal (`9drive`)
+
+`scripts/9drive` starts the whole app with one word and opens it in your browser, from any folder:
+
+```bash
+./scripts/install-cli.sh   # once; links it into ~/.local/bin and adds that folder to PATH in ~/.bashrc
+9drive                     # start (if needed) and open http://localhost:5173
+9drive stop                # stop; your data is kept
+9drive status | logs | restart | rebuild | open | help
+```
+
+It runs `docker compose up -d` in the project folder (override with `NINEDRIVE_HOME`), waits until the backend answers, then opens the browser (`wslview` or `explorer.exe` on WSL, `xdg-open` elsewhere). Use `9drive --no-open` to skip the browser. It never runs `docker compose down -v`, so the database is never wiped. If Docker isn't running it tries `sudo -n service docker start` and otherwise tells you what to start.
+
 ## Configuration
 
 <details>

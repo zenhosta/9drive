@@ -13,6 +13,9 @@ import { GetObjectCommand } from '@aws-sdk/client-s3'
 import { Readable } from 'node:stream'
 import { ZipArchive } from 'archiver'
 import { createAuditLog } from '../../utils/audit.js'
+import { createMoveJob, expandFolders, JobRequestError } from '../jobs/job.service.js'
+import { CATEGORY_KEYS, CATEGORY_LABELS, categoryWhere, classifyFile, type CategoryKey } from './file-types.js'
+import type { Prisma } from '@prisma/client'
 
 
 
@@ -86,6 +89,112 @@ fileRouter.get('/', async (req: AuthRequest, res, next) => {
     })
     return res.json({ files: files.map((file) => ({ ...file, sizeBytes: file.sizeBytes.toString() })) })
   } catch (error) {
+    return next(error)
+  }
+})
+
+// ---- Files by type (all drives) ----
+
+const byTypeQuery = z.object({
+  category: z.enum(['all', ...CATEGORY_KEYS]).default('all'),
+  accountId: z.string().optional(),
+  q: z.string().trim().max(255).optional(),
+  sort: z.enum(['name', 'size', 'date']).default('date'),
+  order: z.enum(['asc', 'desc']).default('desc'),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+})
+
+function baseByTypeWhere(userId: string, q: z.infer<typeof byTypeQuery>): Prisma.FileWhereInput {
+  return {
+    userId,
+    status: 'active',
+    ...(q.accountId ? { connectedAccountId: q.accountId } : {}),
+    ...(q.q ? { name: { contains: q.q } } : {}),
+  }
+}
+
+fileRouter.get('/by-type/summary', async (req: AuthRequest, res, next) => {
+  try {
+    const query = byTypeQuery.parse(req.query)
+    const base = baseByTypeWhere(req.user!.id, query)
+    const [total, ...perCategory] = await Promise.all([
+      prisma.file.aggregate({ where: base, _count: { _all: true }, _sum: { sizeBytes: true } }),
+      ...CATEGORY_KEYS.map((key) => prisma.file.aggregate({ where: { AND: [base, categoryWhere(key)] }, _count: { _all: true }, _sum: { sizeBytes: true } })),
+    ])
+    const categories = CATEGORY_KEYS.map((key, i) => ({ key, label: CATEGORY_LABELS[key], count: perCategory[i]._count._all, sizeBytes: (perCategory[i]._sum.sizeBytes ?? 0n).toString() }))
+    return res.json({ total: { count: total._count._all, sizeBytes: (total._sum.sizeBytes ?? 0n).toString() }, categories })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+fileRouter.get('/by-type', async (req: AuthRequest, res, next) => {
+  try {
+    const query = byTypeQuery.parse(req.query)
+    const base = baseByTypeWhere(req.user!.id, query)
+    const where: Prisma.FileWhereInput = query.category === 'all' ? base : { AND: [base, categoryWhere(query.category as CategoryKey)] }
+    const orderField = query.sort === 'name' ? 'name' : query.sort === 'size' ? 'sizeBytes' : 'createdAt'
+    const [total, files] = await Promise.all([
+      prisma.file.count({ where }),
+      prisma.file.findMany({
+        where,
+        include: { connectedAccount: { select: { id: true, email: true, displayName: true, provider: true } }, folder: { select: { id: true, name: true } } },
+        orderBy: [{ [orderField]: query.order }, { id: 'asc' }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+    ])
+    return res.json({
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+      files: files.map((file) => ({ ...file, sizeBytes: file.sizeBytes.toString(), category: classifyFile(file.mimeType, file.name) })),
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+// One request for a whole page of thumbnails instead of one preview-token call per file.
+fileRouter.post('/preview-tokens', async (req: AuthRequest, res, next) => {
+  try {
+    const body = z.object({ fileIds: z.array(z.string().min(1)).min(1).max(100) }).parse(req.body)
+    const files = await prisma.file.findMany({ where: { id: { in: body.fileIds }, userId: req.user!.id, status: 'active' }, select: { id: true } })
+    const tokens = files.map((file) => ({ fileId: file.id, token: randomToken(32) }))
+    await prisma.filePreviewToken.createMany({ data: tokens.map((t) => ({ fileId: t.fileId, userId: req.user!.id, tokenHash: hashToken(t.token), expiresAt: new Date(Date.now() + 10 * 60_000) })) })
+    return res.status(201).json({ previews: Object.fromEntries(tokens.map((t) => [t.fileId, `/files/preview/${t.token}`])) })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+const moveToAccountSchema = z.object({
+  fileIds: z.array(z.string().min(1)).max(1000).default([]),
+  driveItemIds: z.array(z.string().min(1)).max(5000).default([]),
+  targetAccountId: z.string().min(1),
+  targetFolderId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/).optional(),
+  operation: z.enum(['move', 'copy']).default('move'),
+  folders: z.array(z.object({ accountId: z.string().min(1), path: z.string().min(1).max(1000) })).max(200).default([]),
+  includeNative: z.boolean().default(false),
+  nativeFormat: z.enum(['native', 'office']).default('native'),
+})
+
+fileRouter.post('/move-to-account', async (req: AuthRequest, res, next) => {
+  try {
+    const body = moveToAccountSchema.parse(req.body)
+    if (body.fileIds.length + body.driveItemIds.length + body.folders.length === 0) return res.status(400).json({ code: 'NOTHING_TO_MOVE', message: 'Select at least one file.' })
+    const requested = [
+      ...body.fileIds.map((fileId) => ({ fileId, targetAccountId: body.targetAccountId })),
+      ...body.driveItemIds.map((driveItemId) => ({ driveItemId, targetAccountId: body.targetAccountId })),
+      ...(body.folders.length ? await expandFolders(req.user!.id, body.folders, body.targetAccountId) : []),
+    ]
+    const result = await createMoveJob(req.user!.id, 'move', requested, { includeNative: body.includeNative, nativeFormat: body.nativeFormat, targetFolderId: body.targetFolderId, operation: body.operation })
+    await createAuditLog(req.user!.id, 'MOVE_FILES_TO_ACCOUNT', 'move_job', result.job.id, { count: result.accepted, targetAccountId: body.targetAccountId })
+    return res.status(202).json({ jobId: result.job.id, accepted: result.accepted, skipped: result.skipped, warnings: result.warnings })
+  } catch (error) {
+    if (error instanceof JobRequestError) return res.status(error.status).json({ code: error.code, message: error.message, details: error.details })
     return next(error)
   }
 })

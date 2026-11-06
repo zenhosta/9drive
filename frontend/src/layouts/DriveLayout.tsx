@@ -1,10 +1,13 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 import { Outlet, useOutletContext, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
+  ArrowRightLeft,
   Bell,
   Braces,
   FileArchive,
   Gauge,
+  LayoutDashboard,
+  Layers,
   History,
   LogOut,
   Menu,
@@ -35,13 +38,16 @@ import { getGravatarUrl } from '@/lib/gravatar'
 import { cn } from '@/lib/utils'
 
 const menu = [
+  { label: 'Overview', icon: LayoutDashboard, href: '/overview' },
   { label: 'All Files', icon: FileArchive, href: '/all-files' },
+  { label: 'Files by Type', icon: Layers, href: '/files-by-type' },
   { label: 'Quota Tracker', icon: Gauge, href: '/quota' },
+  { label: 'Jobs', icon: ArrowRightLeft, href: '/move-jobs' },
+  { label: 'Settings', icon: Settings, href: '/settings' },
   { label: 'Shared With Me', icon: Share2, href: '/shared' },
   { label: 'Starred', icon: Star, href: '/starred', disabled: true },
   { label: 'Recycle Bin', icon: Trash2, href: '/trash' },
   { label: 'Activity Log', icon: History, href: '/activity' },
-  { label: 'Setting', icon: Settings, href: '/settings' },
   { label: 'API Keys', icon: Braces, href: '/api' },
 ]
 
@@ -185,6 +191,7 @@ function Sidebar({ onNavigate, user, storage, breakdown, onLogout }: { onNavigat
         <Button variant="danger" size="sm" className="mt-3 w-full justify-start h-10 px-3 text-[13px] font-bold" onClick={onLogout}>
           <LogOut className="h-4 w-4" />Log Out
         </Button>
+        <p className="mt-2 text-center text-[10px] text-slate-500" title="If this date looks old, refresh the page">Build {__BUILD_ID__}</p>
       </div>
     </aside>
   )
@@ -384,6 +391,7 @@ export function DriveLayout() {
 
   return (
     <main className="min-h-screen w-full overflow-x-hidden bg-white">
+      <a href="#content" className="sr-only z-[90] rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
       <div className="flex min-h-screen w-full flex-col bg-white lg:h-screen lg:overflow-hidden lg:flex-row">
         <div className="hidden lg:block lg:h-screen lg:shrink-0">
           <Sidebar user={user} storage={storage} breakdown={breakdown} onLogout={logout} />
@@ -506,7 +514,7 @@ export function DriveLayout() {
               {infoOpen ? <SystemInfoDropdown storage={storage} /> : null}
             </div>
           </header>
-          <Outlet context={{ setHeaderActions } satisfies DriveLayoutContext} />
+          <div id="content" tabIndex={-1} className="outline-none"><Outlet context={{ setHeaderActions } satisfies DriveLayoutContext} /></div>
         </section>
       </div>
 
