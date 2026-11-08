@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `AGENTS.md` (imported above) holds the conventions, security rules, env vars, and API list. This file adds what it leaves out, and notes where the code has moved past it.
 
+**Current work:** the project is being turned into Multinary with multi-account Cloudinary support. Read `docs/MULTINARY_PROGRESS.md` for what is done, what is still unverified, and the plan.
+
 ## Commands
 
 Neither package has a test runner or linter. Verification means running the type-check/build:
