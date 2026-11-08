@@ -19,7 +19,7 @@ systemRouter.post('/update', requireAuth, (req, res, next) => {
     if (gitError) {
       return res.status(400).json({
         code: 'GIT_NOT_FOUND',
-        message: 'Git is not installed inside the app container. Since you are running 9Drive in Docker, please update by running:\n\n1. ssh root@103.65.237.136\n2. cd 9drive\n3. git pull\n4. docker-compose down && docker-compose up -d --build\n\ndirectly in your VPS host terminal.'
+        message: 'Git is not installed inside the app container. Since you are running Multinary in Docker, please update by running:\n\n1. ssh root@103.65.237.136\n2. cd 9drive\n3. git pull\n4. docker-compose down && docker-compose up -d --build\n\ndirectly in your VPS host terminal.'
       })
     }
 
@@ -206,7 +206,7 @@ systemRouter.get('/backup', requireAuth, (req, res, next) => {
     if (!fs.existsSync(dbPath)) {
       return res.status(404).json({ code: 'NOT_FOUND', message: 'Database file not found.' })
     }
-    res.setHeader('Content-Disposition', 'attachment; filename=9drive-backup.db')
+    res.setHeader('Content-Disposition', 'attachment; filename=multinary-backup.db')
     res.setHeader('Content-Type', 'application/octet-stream')
     const fileStream = fs.createReadStream(dbPath)
     fileStream.pipe(res)

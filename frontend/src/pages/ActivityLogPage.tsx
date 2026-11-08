@@ -136,7 +136,7 @@ export function ActivityLogPage() {
     <>
       <PageHeader
         title="Activity Log"
-        description="View audit trails and file activities in your 9Drive workspace."
+        description="View audit trails and file activities in your Multinary workspace."
       />
 
       {error && (

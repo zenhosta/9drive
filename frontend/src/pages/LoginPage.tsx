@@ -50,7 +50,7 @@ export function LoginPage() {
       <Card className="w-full max-w-md p-6">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white"><HardDrive className="h-6 w-6" /></div>
-          <div><h1 className="text-2xl font-extrabold">Login</h1><p className="text-sm text-slate-500">Access your 9Drive gateway.</p></div>
+          <div><h1 className="text-2xl font-extrabold">Login</h1><p className="text-sm text-slate-500">Access your Multinary gateway.</p></div>
         </div>
         <form onSubmit={submit} className="mt-6 grid gap-4">
           <label className="grid gap-2 text-sm font-semibold">Email<Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>

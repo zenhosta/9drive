@@ -1,6 +1,6 @@
-![9Drive cover](https://i.ibb.co.com/35BySv1C/image.png)
+![Multinary cover](https://i.ibb.co.com/35BySv1C/image.png)
 
-<h1 align="center">9Drive</h1>
+<h1 align="center">Multinary</h1>
 
 <p align="center">
   <b>All your free cloud storage, in one drive.</b><br />
@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="docs/media/9drive-trailer.mp4">
-    <img src="docs/media/9drive-trailer.gif" alt="9Drive trailer: storage meters merge into one 380 GB drive, then the real dashboard connects accounts, routes uploads and shares a file" width="100%" />
+    <img src="docs/media/9drive-trailer.gif" alt="Multinary trailer: storage meters merge into one 380 GB drive, then the real dashboard connects accounts, routes uploads and shares a file" width="100%" />
   </a>
   <br />
   <sub>▶ 32-second trailer. Click it to open the full-quality MP4 (<code>docs/media/9drive-trailer.mp4</code>).</sub>
@@ -25,11 +25,11 @@
 
 ---
 
-## Why 9Drive?
+## Why Multinary?
 
 Every Google account comes with 15 GB of free storage. If you have a few accounts, you have plenty of space, but it's split up, and one account always fills up first.
 
-9Drive joins them together. Connect your Google Drive accounts (and any S3-compatible bucket), and you get:
+Multinary joins them together. Connect your Google Drive accounts (and any S3-compatible bucket), and you get:
 
 - 📦 **One storage pool.** See the combined quota of every connected account on one dashboard.
 - 🧭 **Uploads that pick the right account.** Each file goes to an account that has enough room. You choose the rule: most free space, round-robin, or your own priority order.
@@ -67,7 +67,7 @@ Try the live preview at **[9drive.zenhosta.com](https://9drive.zenhosta.com)**.
   </tr>
 </table>
 
-<p align="center"><img src="docs/screenshots/mobile.webp" alt="9Drive on a phone" width="280" /><br /><sub>It works on phones too, and can be installed as a PWA.</sub></p>
+<p align="center"><img src="docs/screenshots/mobile.webp" alt="Multinary on a phone" width="280" /><br /><sub>It works on phones too, and can be installed as a PWA.</sub></p>
 
 ## Features
 
@@ -75,7 +75,7 @@ Try the live preview at **[9drive.zenhosta.com](https://9drive.zenhosta.com)**.
 - Google Drive and S3-compatible storage in one dashboard. S3 works with AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, or any custom endpoint.
 - Combined quota summary plus a per-account Quota Tracker.
 - Upload routing policies: *most available*, *round-robin*, or *priority order*.
-- Google Drive uploads land in a root folder called `9drive`. A manual **Sync Drive** button brings changes you made in Google Drive back into 9Drive.
+- Google Drive uploads land in a root folder called `9drive`. A manual **Sync Drive** button brings changes you made in Google Drive back into Multinary.
 
 **Files**
 - Upload by streaming, with a progress panel in the bottom-right corner.
@@ -238,7 +238,7 @@ Google sign-in and Drive access need a free OAuth client from **Google Cloud Con
    - Authorized JavaScript origin: `http://localhost:5173`
    - Authorized redirect URI: `http://localhost:4000/connected-accounts/google/callback`
    - Copy the **Client ID** and **Client Secret**.
-5. **Give the credentials to 9Drive.** Either way works:
+5. **Give the credentials to Multinary.** Either way works:
    - **In the app (easiest):** log in, open **Settings → Google Credentials**, paste the Client ID, Client Secret, and Redirect URI, then click **Save Configuration**.
    - **From the command line:** put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in `backend/.env` and run `cd backend && npm run seed:google-config`. With Docker, use `docker compose exec backend npm run seed:google-config`.
 

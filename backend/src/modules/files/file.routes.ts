@@ -407,7 +407,7 @@ fileRouter.post('/batch-download', async (req: AuthRequest, res, next) => {
     if (files.length === 0) return res.status(404).json({ code: 'FILES_NOT_FOUND', message: 'No files found.' })
 
     res.setHeader('Content-Type', 'application/zip')
-    res.setHeader('Content-Disposition', 'attachment; filename="9drive-download.zip"')
+    res.setHeader('Content-Disposition', 'attachment; filename="multinary-download.zip"')
 
     const archive = new ZipArchive({ zlib: { level: 9 } })
     archive.on('error', (err: any) => {

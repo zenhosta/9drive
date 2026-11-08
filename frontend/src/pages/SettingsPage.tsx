@@ -83,7 +83,7 @@ export function SettingsPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = '9drive-backup.db'
+      a.download = 'multinary-backup.db'
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -379,7 +379,7 @@ export function SettingsPage() {
             <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2.5"><Cloud className="h-5 w-5 text-blue-600" /><h2 className="text-[16px] font-bold">Google Drive</h2></div>
-                <p className="mt-1 text-[13px] text-slate-500">Connect one or more Google Drive accounts. 9Drive will route uploads to account with enough space.</p>
+                <p className="mt-1 text-[13px] text-slate-500">Connect one or more Google Drive accounts. Multinary will route uploads to account with enough space.</p>
               </div>
               <Button className="w-full sm:w-32" size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Opening...' : 'Connect Drive'}</Button>
             </div>
@@ -560,7 +560,7 @@ export function SettingsPage() {
                     <div>
                       <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Restore Database Backup</h3>
                       <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400 leading-normal">
-                        Upload a previously downloaded 9Drive backup file to replace the active database.
+                        Upload a previously downloaded Multinary backup file to replace the active database.
                       </p>
                     </div>
                   </div>
@@ -622,7 +622,7 @@ export function SettingsPage() {
           <div className="grid gap-3 sm:flex sm:justify-end"><Button variant="outline" type="button" onClick={() => setS3Open(false)} disabled={connectingS3}>Cancel</Button><Button type="submit" disabled={connectingS3}>{connectingS3 ? 'Connecting...' : 'Connect S3'}</Button></div>
         </form>
       </DummyModal>
-      <DummyModal open={Boolean(accountToDisconnect)} title="Disconnect storage?" description="This will remove this storage account from 9Drive. Existing file records for this account may no longer be usable." onClose={() => setAccountToDisconnect(null)}>
+      <DummyModal open={Boolean(accountToDisconnect)} title="Disconnect storage?" description="This will remove this storage account from Multinary. Existing file records for this account may no longer be usable." onClose={() => setAccountToDisconnect(null)}>
         <div className="grid gap-4">
           <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
             <p className="font-semibold text-slate-950">{accountToDisconnect?.email}</p>

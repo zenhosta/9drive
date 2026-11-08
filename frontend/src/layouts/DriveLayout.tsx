@@ -129,7 +129,7 @@ function Sidebar({ onNavigate, user, storage, breakdown, onLogout }: { onNavigat
     <aside className="flex h-full w-64 flex-col border-slate-200/60 bg-slate-50/40 backdrop-blur-xl p-4 lg:border-r">
       <div className="flex items-center gap-2.5 pb-3 pt-1">
         <BrandLogo className="h-8 w-8" />
-        <span className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">9Drive</span>
+        <span className="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Multinary</span>
       </div>
 
       <div className="flex items-center gap-2.5 border-y border-slate-200/60 py-3 my-3">
@@ -406,7 +406,7 @@ export function DriveLayout() {
                 </Button>
                 <div className="flex min-w-0 items-center gap-2">
                   <BrandLogo className="h-9 w-9 shrink-0" />
-                  <span className="truncate text-xl font-extrabold tracking-tight">9Drive</span>
+                  <span className="truncate text-xl font-extrabold tracking-tight">Multinary</span>
                 </div>
               </div>
               <div className="flex gap-2">

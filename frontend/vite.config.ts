@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'pwa-192x192.svg', 'pwa-512x512.svg', 'maskable-icon.svg'],
       manifest: {
-        name: '9Drive',
-        short_name: '9Drive',
+        name: 'Multinary',
+        short_name: 'Multinary',
         description: 'Google Drive storage gateway for files, folders, sharing, and quota tracking.',
         theme_color: '#2563eb',
         background_color: '#ffffff',

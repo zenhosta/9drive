@@ -453,7 +453,7 @@ export function AllFilesPage() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = '9drive-download.zip'
+      link.download = 'multinary-download.zip'
       link.click()
       URL.revokeObjectURL(url)
       clearSelection()
@@ -776,7 +776,7 @@ export function AllFilesPage() {
       <DummyModal open={shareOpen} title="Share Link" description={activeFile?.name ?? ''} onClose={() => setShareOpen(false)}>
         <div className="grid gap-4">
           <div>
-            <label className="text-xs font-bold text-slate-500 block mb-1">9Drive Public Share Link (No GDrive login required)</label>
+            <label className="text-xs font-bold text-slate-500 block mb-1">Multinary Public Share Link (No GDrive login required)</label>
             <Input value={shareUrl} readOnly />
           </div>
           <div className="flex justify-end gap-3">
