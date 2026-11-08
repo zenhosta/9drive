@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, Cloud, Database, Filter, Gauge, Link2, RefreshCw } from 'lucide-react'
+import { CheckCircle, Cloud, CloudUpload, Database, Filter, Gauge, Link2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { PageHeader } from '@/components/drive/PageHeader'
@@ -13,21 +13,22 @@ type RoutingPolicy = { mode: RoutingMode; priorityAccountIds: string[]; roundRob
 
 function providerLabel(provider: string) {
   if (provider === 's3') return 'S3 Storage'
+  if (provider === 'cloudinary') return 'Cloudinary'
   return 'Google Drive'
 }
 
 function ProviderIcon({ provider }: { provider: string }) {
-  const Icon = provider === 's3' ? Database : Cloud
+  const Icon = provider === 's3' ? Database : provider === 'cloudinary' ? CloudUpload : Cloud
   return <Icon className="h-6 w-6" />
 }
 
 function storageLimitLabel(account: ConnectedAccount) {
-  if (account.provider === 's3' && account.storageAccount?.totalBytes === null) return 'Unlimited'
+  if (account.provider !== 'google_drive' && account.storageAccount?.totalBytes === null) return 'Unlimited'
   return formatBytes(account.storageAccount?.totalBytes)
 }
 
 function availableLabel(account: ConnectedAccount) {
-  if (account.provider === 's3' && account.storageAccount?.availableBytes === null) return 'Unlimited'
+  if (account.provider !== 'google_drive' && account.storageAccount?.availableBytes === null) return 'Unlimited'
   return formatBytes(account.storageAccount?.availableBytes)
 }
 
@@ -188,7 +189,7 @@ export function QuotaTrackerPage() {
           <Card className="col-span-full p-8 text-center">
             <Cloud className="mx-auto h-10 w-10 text-blue-600" />
             <h2 className="mt-4 text-xl font-extrabold">No connected drives</h2>
-            <p className="mt-2 text-sm text-slate-500">Connect Google Drive or S3-compatible storage to start tracking quota.</p>
+            <p className="mt-2 text-sm text-slate-500">Connect Google Drive, S3-compatible storage or Cloudinary to start tracking quota.</p>
             <Button className="mt-5" onClick={connectDrive}><Link2 className="h-4 w-4" />Connect Drive</Button>
           </Card>
         ) : accounts.map((account) => {

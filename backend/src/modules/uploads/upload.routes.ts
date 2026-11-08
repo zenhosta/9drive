@@ -9,6 +9,7 @@ import { prisma } from '../../config/prisma.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { ensureGoogleAppFolder, getAuthedGoogleClient, syncGoogleQuota } from '../google/google.service.js'
 import { buildS3ObjectKey, getS3ConfigForAccount, syncS3Quota, uploadS3Object } from '../s3/s3.service.js'
+import { buildCloudinaryPublicId, getCloudinaryConfigForAccount, syncCloudinaryQuota, uploadCloudinaryObject } from '../cloudinary/cloudinary.service.js'
 import { createAuditLog } from '../../utils/audit.js'
 
 export const uploadRouter = Router()
@@ -45,7 +46,7 @@ function byPriority<T extends { account: { id: string; createdAt: Date } }>(item
 
 async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByAccount = new Map<string, bigint>(), targetAccountId?: string | null) {
   const accounts = await prisma.connectedAccount.findMany({
-    where: { userId, provider: { in: ['google_drive', 's3'] }, status: 'connected', ...(targetAccountId ? { id: targetAccountId } : {}) },
+    where: { userId, provider: { in: ['google_drive', 's3', 'cloudinary'] }, status: 'connected', ...(targetAccountId ? { id: targetAccountId } : {}) },
     include: { storageAccount: true },
   })
 
@@ -54,6 +55,8 @@ async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByA
     try {
       if (account.provider === 's3') {
         await syncS3Quota(account.id)
+      } else if (account.provider === 'cloudinary') {
+        await syncCloudinaryQuota(account.id)
       } else {
         await syncGoogleQuota(account.id)
       }
@@ -67,7 +70,7 @@ async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByA
   }))
 
   const fresh = await prisma.connectedAccount.findMany({
-    where: { userId, provider: { in: ['google_drive', 's3'] }, status: 'connected' },
+    where: { userId, provider: { in: ['google_drive', 's3', 'cloudinary'] }, status: 'connected' },
     include: { storageAccount: true },
   })
 
@@ -97,9 +100,9 @@ async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByA
 
   return eligible
     .sort((a, b) => {
-      if (a.availableBytes === null && b.availableBytes === null) return a.account.provider === 's3' ? -1 : 1
-      if (a.availableBytes === null) return a.account.provider === 's3' ? -1 : 1
-      if (b.availableBytes === null) return b.account.provider === 's3' ? 1 : -1
+      if (a.availableBytes === null && b.availableBytes === null) return a.account.provider !== 'google_drive' ? -1 : 1
+      if (a.availableBytes === null) return a.account.provider !== 'google_drive' ? -1 : 1
+      if (b.availableBytes === null) return b.account.provider !== 'google_drive' ? 1 : -1
       return Number(b.availableBytes - a.availableBytes)
     })[0]?.account
 }
@@ -190,7 +193,7 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         const streamedBytes = BigInt(fileBuffer.length)
 
         let providerFileId = ''
-        let s3FileId: string | null = null
+        let provisionalFileId: string | null = null
         let uploadedName = fileName
         let uploadedMimeType = meta.mimeType
         if (account.provider === 's3') {
@@ -198,12 +201,27 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
           const provisionalFile = await prisma.file.create({
             data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 's3', providerFileId: 'pending', name: fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' },
           })
-          s3FileId = provisionalFile.id
+          provisionalFileId = provisionalFile.id
           providerFileId = buildS3ObjectKey(config, req.user!.id, provisionalFile.id, fileName)
           await uploadS3Object(config, providerFileId, Readable.from(fileBuffer), meta.mimeType)
           await prisma.file.update({ where: { id: provisionalFile.id }, data: { providerFileId, status: 'active' } })
           completed.push({ ...provisionalFile, providerFileId, status: 'active', sizeBytes: provisionalFile.sizeBytes.toString() })
           logUpload('s3 upload completed', { sessionId: session.id, accountId: account.id, fileName })
+        } else if (account.provider === 'cloudinary') {
+          const config = await getCloudinaryConfigForAccount(account.id, req.user!.id)
+          const provisionalFile = await prisma.file.create({
+            data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 'cloudinary', providerFileId: 'pending', name: fileName, mimeType: meta.mimeType, sizeBytes: meta.sizeBytes, status: 'uploading' },
+          })
+          provisionalFileId = provisionalFile.id
+          try {
+            providerFileId = await uploadCloudinaryObject(config, buildCloudinaryPublicId(config, provisionalFile.id), fileBuffer, meta.mimeType, fileName)
+          } catch (uploadError) {
+            await prisma.file.delete({ where: { id: provisionalFile.id } }).catch(() => undefined)
+            throw uploadError
+          }
+          await prisma.file.update({ where: { id: provisionalFile.id }, data: { providerFileId, status: 'active' } })
+          completed.push({ ...provisionalFile, providerFileId, status: 'active', sizeBytes: provisionalFile.sizeBytes.toString() })
+          logUpload('cloudinary upload completed', { sessionId: session.id, accountId: account.id, fileName })
         } else {
           const auth = await getAuthedGoogleClient(account)
           const drive = google.drive({ version: 'v3', auth })
@@ -241,19 +259,20 @@ export async function handleUpload(req: AuthRequest, res: Response, next: NextFu
         }
 
         if (streamedBytes !== meta.sizeBytes) {
-          if (s3FileId) await prisma.file.update({ where: { id: s3FileId }, data: { status: 'deleted', deletedAt: new Date() } }).catch(() => undefined)
+          if (provisionalFileId) await prisma.file.update({ where: { id: provisionalFileId }, data: { status: 'deleted', deletedAt: new Date() } }).catch(() => undefined)
           await prisma.uploadSession.update({ where: { id: session.id }, data: { status: 'failed', errorMessage: 'Streamed byte count did not match declared size.' } })
           failed.push({ fileName, code: 'UPLOAD_SIZE_MISMATCH', message: 'Streamed byte count did not match declared size.' })
           return
         }
 
-        const file = account.provider === 's3' ? null : await prisma.file.create({ data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 'google_drive', providerFileId, name: uploadedName, mimeType: uploadedMimeType, sizeBytes: meta.sizeBytes } })
+        const file = account.provider === 's3' || account.provider === 'cloudinary' ? null : await prisma.file.create({ data: { userId: req.user!.id, connectedAccountId: account.id, folderId, provider: 'google_drive', providerFileId, name: uploadedName, mimeType: uploadedMimeType, sizeBytes: meta.sizeBytes } })
         if (file) {
           logUpload('database file created', { sessionId: session.id, fileId: file.id, accountId: account.id })
           completed.push({ ...file, sizeBytes: file.sizeBytes.toString() })
         }
         await prisma.uploadSession.update({ where: { id: session.id }, data: { status: 'completed', completedAt: new Date() } })
         if (account.provider === 's3') syncS3Quota(account.id).catch(() => undefined)
+        else if (account.provider === 'cloudinary') syncCloudinaryQuota(account.id).catch(() => undefined)
         else syncQuotaInBackground(account.id, session.id)
       } catch (error) {
         fileStream.resume()

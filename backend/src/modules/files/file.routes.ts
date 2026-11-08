@@ -7,6 +7,7 @@ import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.
 import { hashToken, randomToken } from '../../utils/crypto.js'
 import { getAuthedGoogleClient, syncGoogleAppFolderFiles, syncGoogleQuota } from '../google/google.service.js'
 import { deleteS3Object, syncS3Quota, createS3Client, getS3ConfigForAccount } from '../s3/s3.service.js'
+import { deleteCloudinaryObject, getCloudinaryConfigForAccount, getCloudinaryDeliveryUrl, openCloudinaryStream, syncCloudinaryQuota } from '../cloudinary/cloudinary.service.js'
 import { streamProviderFile } from './stream-file.js'
 import { googleDownloadExportMimeTypes, normalizeHeaders, withExtension } from './stream-google-file.js'
 import { GetObjectCommand } from '@aws-sdk/client-s3'
@@ -174,6 +175,8 @@ fileRouter.delete('/batch/permanent', async (req: AuthRequest, res, next) => {
       try {
         if (file.provider === 's3') {
           await deleteS3Object(file)
+        } else if (file.provider === 'cloudinary') {
+          await deleteCloudinaryObject(file)
         } else {
           const auth = await getAuthedGoogleClient(file.connectedAccount)
           const drive = google.drive({ version: 'v3', auth })
@@ -197,6 +200,8 @@ fileRouter.delete('/batch/permanent', async (req: AuthRequest, res, next) => {
       const account = files.find((file) => file.connectedAccountId === accountId)?.connectedAccount
       if (account?.provider === 's3') {
         await syncS3Quota(accountId).catch(() => undefined)
+      } else if (account?.provider === 'cloudinary') {
+        await syncCloudinaryQuota(accountId).catch(() => undefined)
       } else {
         await syncGoogleQuota(accountId).catch(() => undefined)
       }
@@ -270,7 +275,7 @@ fileRouter.patch('/:id', async (req: AuthRequest, res, next) => {
     const body = z.object({ name: z.string().min(1).max(255).optional(), folderId: z.string().nullable().optional() }).parse(req.body)
     const fileId = String(req.params.id)
     const file = await prisma.file.findFirstOrThrow({ where: { id: fileId, userId: req.user!.id }, include: { connectedAccount: true } })
-    const drive = file.provider === 's3' ? null : google.drive({ version: 'v3', auth: await getAuthedGoogleClient(file.connectedAccount) })
+    const drive = file.provider !== 'google_drive' ? null : google.drive({ version: 'v3', auth: await getAuthedGoogleClient(file.connectedAccount) })
     if (body.folderId) await prisma.folder.findFirstOrThrow({ where: { id: body.folderId, userId: req.user!.id, deletedAt: null } })
     if (body.name && drive) await drive.files.update({ fileId: file.providerFileId, requestBody: { name: body.name } })
     const updated = await prisma.file.update({ where: { id: file.id }, data: { ...(body.name ? { name: body.name } : {}), ...(body.folderId !== undefined ? { folderId: body.folderId } : {}) }, include: { connectedAccount: { select: { id: true, email: true, provider: true } }, folder: { select: { id: true, name: true } } } })
@@ -352,6 +357,10 @@ fileRouter.get('/:id/view-url', async (req: AuthRequest, res, next) => {
     const fileId = String(req.params.id)
     const file = await prisma.file.findFirstOrThrow({ where: { id: fileId, userId: req.user!.id }, include: { connectedAccount: true } })
     if (file.provider === 's3') return res.json({ url: null })
+    if (file.provider === 'cloudinary') {
+      const config = await getCloudinaryConfigForAccount(file.connectedAccountId)
+      return res.json({ url: getCloudinaryDeliveryUrl(config, file.providerFileId) })
+    }
     const auth = await getAuthedGoogleClient(file.connectedAccount)
     const drive = google.drive({ version: 'v3', auth })
 
@@ -424,6 +433,8 @@ fileRouter.post('/batch-download', async (req: AuthRequest, res, next) => {
           const client = createS3Client(config)
           const response = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: file.providerFileId }))
           stream = response.Body as Readable
+        } else if (file.provider === 'cloudinary') {
+          stream = await openCloudinaryStream(file)
         } else {
           const auth = await getAuthedGoogleClient(file.connectedAccount)
           const headers = normalizeHeaders(await auth.getRequestHeaders())

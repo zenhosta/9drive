@@ -22,10 +22,16 @@ Other scripts that `AGENTS.md` doesn't list:
 
 ## Architecture beyond AGENTS.md
 
-**Two storage providers.** `ConnectedAccount.provider` is `google_drive` or `s3`. An S3-compatible account is a `ConnectedAccount` plus an `S3StorageConfig` row (encrypted keys, bucket, optional endpoint, `prefix` defaulting to `9drive`, optional `quotaBytes`). Code that touches a stored file has to branch on provider:
+**Three storage providers.** `ConnectedAccount.provider` is `google_drive`, `s3` or `cloudinary`. An S3-compatible account is a `ConnectedAccount` plus an `S3StorageConfig` row (encrypted keys, bucket, optional endpoint, `prefix` defaulting to `9drive`, optional `quotaBytes`). Code that touches a stored file has to branch on provider:
 - Streaming: `modules/files/stream-file.ts` (`streamProviderFile`) sends work to `stream-google-file.ts` or `s3/s3.service.ts`.
 - Quota: `syncGoogleQuota` (google.service) vs `syncS3Quota` (s3.service). Both write to `StorageAccount`.
 - Upload: `ensureGoogleAppFolder` + Drive resumable upload vs `buildS3ObjectKey` + `uploadS3Object` (`@aws-sdk/lib-storage`).
+
+**Cloudinary provider.** One `ConnectedAccount` (provider `cloudinary`, `providerAccountId` = cloud name, no Google `providerConfig`) plus a `CloudinaryConfig` row (encrypted API key/secret, `folder` defaulting to `multinary`, optional `quotaBytes`). Code lives in `modules/cloudinary/`: `cloudinary.service.ts` (signed upload/destroy, Usage API quota sync, delivery streaming) and `cloudinary.utils.ts` (pure helpers: request signing, `providerFileId` parsing). It uses plain `fetch`, no Cloudinary SDK.
+- `File.providerFileId` is `<resource_type>:<path used in the delivery URL>`, e.g. `video:multinary/<fileId>.mp4`. Resource type comes from the MIME type (audio is stored as `video`, anything else non-image/video is `raw`).
+- Cloudinary does not expose a storage limit in bytes (plans are credit-based), so the limit is the user-entered `quotaBytes`; empty means unlimited. Used bytes is the larger of the Usage API figure and the sum of this app's file rows, because the API can lag.
+- Files stream from `res.cloudinary.com` (public `upload` type). `GET /files/:id/view-url` returns that direct URL. Free plans cap per-file size (see `media_limits` in the Usage API) and may block PDF/ZIP/raw delivery until enabled in the Cloudinary security settings.
+- Connect with `POST /connected-accounts/cloudinary`; it validates the credentials against the Usage API before keeping the account.
 
 **Upload routing** (`modules/uploads/upload.routes.ts`, `selectAccount`):
 1. Re-sync quota for any account whose last sync is more than 5 minutes old.

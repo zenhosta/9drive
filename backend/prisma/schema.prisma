@@ -21,6 +21,7 @@ model User {
   oauthStates    OauthState[]
   connectedAccounts ConnectedAccount[]
   s3StorageConfigs S3StorageConfig[]
+  cloudinaryConfigs CloudinaryConfig[]
   files          File[]
   fileShares     FileShare[]
   filePreviewTokens FilePreviewToken[]
@@ -157,6 +158,7 @@ model ConnectedAccount {
   folders               Folder[]
   uploadSessions        UploadSession[]
   s3StorageConfig       S3StorageConfig?
+  cloudinaryConfig      CloudinaryConfig?
 
   @@unique([userId, provider, providerAccountId])
   @@index([userId])
@@ -186,6 +188,27 @@ model S3StorageConfig {
   @@index([userId])
   @@index([userId, status])
   @@map("s3_storage_configs")
+}
+
+model CloudinaryConfig {
+  id                 String           @id @default(uuid()) @db.Char(36)
+  userId             String           @map("user_id") @db.Char(36)
+  connectedAccountId String           @unique @map("connected_account_id") @db.Char(36)
+  name               String           @db.VarChar(191)
+  cloudName          String           @map("cloud_name") @db.VarChar(191)
+  apiKeyEncrypted    String           @map("api_key_encrypted") @db.Text
+  apiSecretEncrypted String           @map("api_secret_encrypted") @db.Text
+  folder             String           @default("multinary") @db.VarChar(191)
+  quotaBytes         BigInt?          @map("quota_bytes")
+  status             String           @default("active") @db.VarChar(32)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, status])
+  @@map("cloudinary_configs")
 }
 
 model StorageAccount {

@@ -8,8 +8,18 @@ import { decryptText, encryptText, hashToken, randomToken } from '../../utils/cr
 import { hashPassword } from '../../utils/password.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
 import { syncS3Quota, testS3Connection } from '../s3/s3.service.js'
+import { syncCloudinaryQuota, testCloudinaryConnection } from '../cloudinary/cloudinary.service.js'
 
 export const connectedAccountRouter = Router()
+
+const cloudinaryConnectSchema = z.object({
+  name: z.string().trim().min(1).max(191),
+  cloudName: z.string().trim().min(1).max(191).regex(/^[A-Za-z0-9_-]+$/, 'Cloud name may only contain letters, numbers, "-" and "_".'),
+  apiKey: z.string().trim().min(1),
+  apiSecret: z.string().trim().min(1),
+  folder: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_\-/]+$/, 'Folder may only contain letters, numbers, "-", "_" and "/".').optional(),
+  quotaBytes: z.string().regex(/^\d+$/).optional().nullable(),
+})
 
 const s3ConnectSchema = z.object({
   name: z.string().trim().min(1).max(191),
@@ -24,6 +34,7 @@ const s3ConnectSchema = z.object({
 
 async function syncQuotaForAccount(account: { id: string; provider: string }) {
   if (account.provider === 's3') return syncS3Quota(account.id)
+  if (account.provider === 'cloudinary') return syncCloudinaryQuota(account.id)
   return syncGoogleQuota(account.id)
 }
 
@@ -144,6 +155,55 @@ connectedAccountRouter.post('/s3', requireAuth, async (req: AuthRequest, res, ne
       return res.status(201).json({
         account: {
           ...account,
+          storageAccount: { ...quota, totalBytes: quota.totalBytes?.toString() ?? null, usedBytes: quota.usedBytes.toString(), availableBytes: quota.availableBytes?.toString() ?? null, trashBytes: quota.trashBytes?.toString() ?? null },
+        },
+      })
+    } catch (error) {
+      if (!existingAccount) await prisma.connectedAccount.delete({ where: { id: account.id } }).catch(() => undefined)
+      throw error
+    }
+  } catch (error) {
+    return next(error)
+  }
+})
+
+connectedAccountRouter.post('/cloudinary', requireAuth, async (req: AuthRequest, res, next) => {
+  try {
+    const body = cloudinaryConnectSchema.parse(req.body)
+    const folder = body.folder ?? 'multinary'
+    const identity = {
+      email: `${body.cloudName} (Cloudinary)`,
+      displayName: body.name,
+      accessTokenEncrypted: encryptText('cloudinary'),
+      refreshTokenEncrypted: encryptText(randomToken()),
+      tokenExpiresAt: new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000),
+      scopes: [],
+      status: 'connected',
+    }
+    const existingAccount = await prisma.connectedAccount.findUnique({ where: { userId_provider_providerAccountId: { userId: req.user!.id, provider: 'cloudinary', providerAccountId: body.cloudName } } })
+    const account = existingAccount
+      ? await prisma.connectedAccount.update({ where: { id: existingAccount.id }, data: identity })
+      : await prisma.connectedAccount.create({ data: { userId: req.user!.id, provider: 'cloudinary', providerAccountId: body.cloudName, ...identity } })
+    const fields = {
+      name: body.name,
+      cloudName: body.cloudName,
+      apiKeyEncrypted: encryptText(body.apiKey),
+      apiSecretEncrypted: encryptText(body.apiSecret),
+      folder,
+      quotaBytes: body.quotaBytes ? BigInt(body.quotaBytes) : null,
+    }
+    const config = await prisma.cloudinaryConfig.upsert({
+      where: { connectedAccountId: account.id },
+      create: { userId: req.user!.id, connectedAccountId: account.id, ...fields },
+      update: { ...fields, status: 'active' },
+    })
+    try {
+      await testCloudinaryConnection(config)
+      const quota = await syncCloudinaryQuota(account.id)
+      const { accessTokenEncrypted: _a, refreshTokenEncrypted: _r, ...safeAccount } = account
+      return res.status(201).json({
+        account: {
+          ...safeAccount,
           storageAccount: { ...quota, totalBytes: quota.totalBytes?.toString() ?? null, usedBytes: quota.usedBytes.toString(), availableBytes: quota.availableBytes?.toString() ?? null, trashBytes: quota.trashBytes?.toString() ?? null },
         },
       })

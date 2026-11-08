@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type FormEvent } from 'react'
-import { Bell, Cloud, Database, Globe, HardDrive, Link2, RefreshCw, Trash2 } from 'lucide-react'
+import { Bell, Cloud, CloudUpload, Database, Globe, HardDrive, Link2, RefreshCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DummyModal } from '@/components/drive/DummyModal'
@@ -12,16 +12,17 @@ type ConnectedAccount = { id: string; provider: string; email: string; displayNa
 
 function providerLabel(provider: string) {
   if (provider === 's3') return 'S3 Storage'
+  if (provider === 'cloudinary') return 'Cloudinary'
   return 'Google Drive'
 }
 
 function storageLimitLabel(account: ConnectedAccount) {
-  if (account.provider === 's3' && account.storageAccount?.totalBytes === null) return 'Unlimited'
+  if (account.provider !== 'google_drive' && account.storageAccount?.totalBytes === null) return 'Unlimited'
   return formatBytes(account.storageAccount?.totalBytes)
 }
 
 function availableLabel(account: ConnectedAccount) {
-  if (account.provider === 's3' && account.storageAccount?.availableBytes === null) return 'Unlimited'
+  if (account.provider !== 'google_drive' && account.storageAccount?.availableBytes === null) return 'Unlimited'
   return formatBytes(account.storageAccount?.availableBytes)
 }
 
@@ -33,6 +34,9 @@ export function SettingsPage() {
   const [s3Open, setS3Open] = useState(false)
   const [connectingS3, setConnectingS3] = useState(false)
   const [s3Form, setS3Form] = useState({ name: '', bucket: '', region: 'us-east-1', endpoint: '', accessKeyId: '', secretAccessKey: '', forcePathStyle: false, quotaBytes: '' })
+  const [cloudinaryOpen, setCloudinaryOpen] = useState(false)
+  const [connectingCloudinary, setConnectingCloudinary] = useState(false)
+  const [cloudinaryForm, setCloudinaryForm] = useState({ name: '', cloudName: '', apiKey: '', apiSecret: '', folder: 'multinary', quotaGb: '' })
   const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null)
   const [disconnectingAccountId, setDisconnectingAccountId] = useState<string | null>(null)
   const [accountToDisconnect, setAccountToDisconnect] = useState<ConnectedAccount | null>(null)
@@ -351,9 +355,30 @@ export function SettingsPage() {
     }
   }
 
+  async function connectCloudinary(event: FormEvent) {
+    event.preventDefault()
+    setConnectingCloudinary(true)
+    setMessage('')
+    try {
+      const { quotaGb, ...rest } = cloudinaryForm
+      const quotaBytes = quotaGb.trim() ? String(Math.round(Number(quotaGb) * 1024 ** 3)) : null
+      if (quotaBytes !== null && !/^\d+$/.test(quotaBytes)) throw new Error('Quota must be a positive number of GB.')
+      await apiFetch('/connected-accounts/cloudinary', { method: 'POST', body: JSON.stringify({ ...rest, quotaBytes }) })
+      setCloudinaryOpen(false)
+      setCloudinaryForm({ name: '', cloudName: '', apiKey: '', apiSecret: '', folder: 'multinary', quotaGb: '' })
+      setMessage('Cloudinary account connected.')
+      await load()
+      window.dispatchEvent(new Event('9drive:storage-changed'))
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Failed to connect Cloudinary account')
+    } finally {
+      setConnectingCloudinary(false)
+    }
+  }
+
   return (
     <>
-      <PageHeader title="Setting" description="Manage account and connected storage." actions={<><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button><Button size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Connecting...' : 'Connect Drive'}</Button></>} />
+      <PageHeader title="Setting" description="Manage account and connected storage." actions={<><Button variant="outline" size="sm" onClick={() => setCloudinaryOpen(true)}><CloudUpload className="h-4 w-4" />Connect Cloudinary</Button><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button><Button size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Connecting...' : 'Connect Drive'}</Button></>} />
       {message ? <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
         <div className="grid gap-4">
@@ -392,6 +417,16 @@ export function SettingsPage() {
                 <p className="mt-1 text-[13px] text-slate-500">Connect AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, or custom endpoint storage.</p>
               </div>
               <Button className="w-full sm:w-32" size="sm" variant="outline" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button>
+            </div>
+          </Card>
+
+          <Card className="overflow-hidden p-3.5">
+            <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2.5"><CloudUpload className="h-5 w-5 text-blue-600" /><h2 className="text-[16px] font-bold">Cloudinary</h2></div>
+                <p className="mt-1 text-[13px] text-slate-500">Connect several Cloudinary accounts (cloud name, API key and secret). Images, video and audio get a direct public URL.</p>
+              </div>
+              <Button className="w-full sm:w-40" size="sm" variant="outline" onClick={() => setCloudinaryOpen(true)}><CloudUpload className="h-4 w-4" />Connect Cloudinary</Button>
             </div>
           </Card>
 
@@ -622,6 +657,18 @@ export function SettingsPage() {
           <div className="grid gap-3 sm:flex sm:justify-end"><Button variant="outline" type="button" onClick={() => setS3Open(false)} disabled={connectingS3}>Cancel</Button><Button type="submit" disabled={connectingS3}>{connectingS3 ? 'Connecting...' : 'Connect S3'}</Button></div>
         </form>
       </DummyModal>
+      <DummyModal open={cloudinaryOpen} title="Connect Cloudinary" description="Find the cloud name and API credentials in your Cloudinary dashboard under Settings > API Keys." onClose={() => setCloudinaryOpen(false)}>
+        <form className="grid gap-4" onSubmit={connectCloudinary}>
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Display name" value={cloudinaryForm.name} onChange={(event) => setCloudinaryForm({ ...cloudinaryForm, name: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Cloud name" value={cloudinaryForm.cloudName} onChange={(event) => setCloudinaryForm({ ...cloudinaryForm, cloudName: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="API key" inputMode="numeric" value={cloudinaryForm.apiKey} onChange={(event) => setCloudinaryForm({ ...cloudinaryForm, apiKey: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="API secret" type="password" value={cloudinaryForm.apiSecret} onChange={(event) => setCloudinaryForm({ ...cloudinaryForm, apiSecret: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Folder (default multinary)" value={cloudinaryForm.folder} onChange={(event) => setCloudinaryForm({ ...cloudinaryForm, folder: event.target.value })} />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Storage quota in GB (optional, empty = unlimited)" inputMode="decimal" value={cloudinaryForm.quotaGb} onChange={(event) => setCloudinaryForm({ ...cloudinaryForm, quotaGb: event.target.value })} />
+          <div className="grid gap-3 sm:flex sm:justify-end"><Button variant="outline" type="button" onClick={() => setCloudinaryOpen(false)} disabled={connectingCloudinary}>Cancel</Button><Button type="submit" disabled={connectingCloudinary}>{connectingCloudinary ? 'Connecting...' : 'Connect Cloudinary'}</Button></div>
+        </form>
+      </DummyModal>
+
       <DummyModal open={Boolean(accountToDisconnect)} title="Disconnect storage?" description="This will remove this storage account from Multinary. Existing file records for this account may no longer be usable." onClose={() => setAccountToDisconnect(null)}>
         <div className="grid gap-4">
           <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">

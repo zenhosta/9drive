@@ -72,7 +72,7 @@ Try the live preview at **[9drive.zenhosta.com](https://9drive.zenhosta.com)**.
 ## Features
 
 **Storage**
-- Google Drive and S3-compatible storage in one dashboard. S3 works with AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, or any custom endpoint.
+- Google Drive, S3-compatible storage and any number of Cloudinary accounts in one dashboard. S3 works with AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, or any custom endpoint. Cloudinary files get a direct public URL, and Cloudinary has no byte limit in its API, so enter a quota per account if you want routing to respect one.
 - Combined quota summary plus a per-account Quota Tracker.
 - Upload routing policies: *most available*, *round-robin*, or *priority order*.
 - Google Drive uploads land in a root folder called `9drive`. A manual **Sync Drive** button brings changes you made in Google Drive back into Multinary.

@@ -51,6 +51,7 @@ function mimeToKind(mimeType: string): FileItem['kind'] {
 
 function providerLabel(provider: string | undefined) {
   if (provider === 's3') return 'S3 Storage'
+  if (provider === 'cloudinary') return 'Cloudinary'
   return 'Google Drive'
 }
 
@@ -753,7 +754,7 @@ export function AllFilesPage() {
               <option value="">Automatic (Default)</option>
               {connectedAccounts.map((account) => (
                 <option key={account.id} value={account.id}>
-                  {account.email || account.displayName || account.id} ({account.provider === 's3' ? 'S3' : 'Google Drive'})
+                  {account.email || account.displayName || account.id} ({account.provider === 's3' ? 'S3' : account.provider === 'cloudinary' ? 'Cloudinary' : 'Google Drive'})
                 </option>
               ))}
             </select>
