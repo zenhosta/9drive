@@ -7,6 +7,8 @@ import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatBytes, API_URL } from '@/lib/api'
 import { getGravatarUrl } from '@/lib/gravatar'
 import { getStoredUser, getAccessToken, clearAuthSession } from '@/lib/auth'
+import { openExternalUrl, saveBlob, withMobilePlatform } from '@/lib/native'
+import { clearConfiguredApiUrl, getConfiguredApiUrl, isNativeApp } from '@/lib/server'
 
 type ConnectedAccount = { id: string; provider: string; email: string; displayName?: string | null; status: string; storageAccount?: { totalBytes: string | null; usedBytes: string; availableBytes: string | null; lastSyncedAt: string | null } | null }
 
@@ -79,15 +81,7 @@ export function SettingsPage() {
       if (!response.ok) {
         throw new Error('Failed to retrieve database backup.')
       }
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = '9drive-backup.db'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
+      await saveBlob(await response.blob(), '9drive-backup.db')
     } catch (err: any) {
       alert('Failed to download backup: ' + err.message)
     } finally {
@@ -283,9 +277,33 @@ export function SettingsPage() {
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
+  useEffect(() => {
+    function onNativeConnected(event: Event) {
+      const detail = (event as CustomEvent<{ status?: string }>).detail
+      setMessage(detail?.status === 'success' ? 'Google Drive connected.' : 'Google Drive connection failed.')
+      load().then(() => {
+        window.dispatchEvent(new Event('9drive:storage-changed'))
+      }).catch(() => undefined)
+    }
+    window.addEventListener('9drive:google-connected', onNativeConnected)
+    return () => window.removeEventListener('9drive:google-connected', onNativeConnected)
+  }, [])
+
   async function connectDrive() {
     setConnecting(true)
     setMessage('')
+    if (isNativeApp()) {
+      try {
+        const data = await apiFetch<{ url: string }>(withMobilePlatform('/connected-accounts/google/connect-url'))
+        await openExternalUrl(data.url)
+        setMessage('Finish connecting in the browser, then return to 9Drive.')
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Failed to start Google Drive connection')
+      } finally {
+        setConnecting(false)
+      }
+      return
+    }
     const popup = window.open('', 'google-drive-connect', 'width=540,height=720')
     if (popup) {
       popup.document.write('<html><head><title>Connecting...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;color:#64748b;}</style></head><body><div style="text-align:center;"><h2>Connecting to Google...</h2><p>Please wait while we redirect you.</p></div></body></html>')
@@ -604,6 +622,26 @@ export function SettingsPage() {
           </Card>
         </div>
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 lg:gap-3">
+          {isNativeApp() ? (
+            <Card className="p-4">
+              <Globe className="h-5 w-5 text-blue-600" />
+              <h2 className="mt-2 text-[14px] font-bold">Server</h2>
+              <p className="mt-1 truncate text-[12px] text-slate-500">{getConfiguredApiUrl() ?? 'Not configured'}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 w-full"
+                onClick={() => {
+                  if (!confirm('Change server? You will be signed out.')) return
+                  clearConfiguredApiUrl()
+                  clearAuthSession()
+                  window.location.replace('/')
+                }}
+              >
+                Change server
+              </Button>
+            </Card>
+          ) : null}
           <Card className="p-4"><HardDrive className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Storage</h2><p className="mt-1 text-[12px] text-slate-500">Connected accounts: {accounts.length}</p></Card>
           <Card className="p-4"><Bell className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Notifications</h2><p className="mt-1 text-[12px] text-slate-500">Email and app alerts are active.</p></Card>
           <Card className="p-4"><Globe className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Region</h2><p className="mt-1 text-[12px] text-slate-500">Workspace region: local gateway.</p></Card>

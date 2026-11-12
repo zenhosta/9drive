@@ -3,6 +3,7 @@ import { exec, spawn } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { requireAuth } from '../../middleware/auth.middleware.js'
+import { requireAdmin } from '../../middleware/admin.middleware.js'
 import { prisma } from '../../config/prisma.js'
 import { decryptText, encryptText } from '../../utils/crypto.js'
 import Busboy from 'busboy'
@@ -10,7 +11,7 @@ import Busboy from 'busboy'
 export const systemRouter = Router()
 
 
-systemRouter.post('/update', requireAuth, (req, res, next) => {
+systemRouter.post('/update', requireAuth, requireAdmin, (req, res, next) => {
   const projectRoot = path.resolve(process.cwd(), '..')
   const updateScript = path.join(projectRoot, 'update.sh')
 
@@ -19,7 +20,7 @@ systemRouter.post('/update', requireAuth, (req, res, next) => {
     if (gitError) {
       return res.status(400).json({
         code: 'GIT_NOT_FOUND',
-        message: 'Git is not installed inside the app container. Since you are running 9Drive in Docker, please update by running:\n\n1. ssh root@103.65.237.136\n2. cd 9drive\n3. git pull\n4. docker-compose down && docker-compose up -d --build\n\ndirectly in your VPS host terminal.'
+        message: 'Git is not installed inside the app container. Since you are running 9Drive in Docker, update from the Docker host instead: git pull, then docker compose up -d --build.'
       })
     }
 
@@ -76,7 +77,7 @@ systemRouter.post('/update', requireAuth, (req, res, next) => {
   })
 })
 
-systemRouter.get('/update-log', requireAuth, (req, res) => {
+systemRouter.get('/update-log', requireAuth, requireAdmin, (req, res) => {
   const projectRoot = path.resolve(process.cwd(), '..')
   const logFile = path.join(projectRoot, 'update.log')
 
@@ -100,7 +101,7 @@ systemRouter.get('/update-log', requireAuth, (req, res) => {
   }
 })
 
-systemRouter.get('/google-config', requireAuth, async (req, res, next) => {
+systemRouter.get('/google-config', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const config = await prisma.providerConfig.findFirst({
       where: { userId: null, provider: 'google_drive', status: 'active' },
@@ -135,7 +136,7 @@ systemRouter.get('/google-config', requireAuth, async (req, res, next) => {
   }
 })
 
-systemRouter.post('/google-config', requireAuth, async (req, res, next) => {
+systemRouter.post('/google-config', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { clientId, clientSecret, redirectUri } = req.body
 
@@ -200,7 +201,7 @@ systemRouter.post('/google-config', requireAuth, async (req, res, next) => {
   }
 })
 
-systemRouter.get('/backup', requireAuth, (req, res, next) => {
+systemRouter.get('/backup', requireAuth, requireAdmin, (req, res, next) => {
   try {
     const dbPath = getDatabaseFilePath()
     if (!fs.existsSync(dbPath)) {
@@ -215,7 +216,7 @@ systemRouter.get('/backup', requireAuth, (req, res, next) => {
   }
 })
 
-systemRouter.post('/restore', requireAuth, (req, res, next) => {
+systemRouter.post('/restore', requireAuth, requireAdmin, (req, res, next) => {
   try {
     const contentType = req.headers['content-type']
     if (!contentType?.includes('multipart/form-data')) {

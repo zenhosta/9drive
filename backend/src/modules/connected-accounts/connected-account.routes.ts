@@ -6,6 +6,7 @@ import { prisma } from '../../config/prisma.js'
 import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { decryptText, encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { hashPassword } from '../../utils/password.js'
+import { frontendRedirect } from '../../utils/redirect.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
 import { syncS3Quota, testS3Connection } from '../s3/s3.service.js'
 
@@ -63,12 +64,12 @@ connectedAccountRouter.get('/', requireAuth, async (req: AuthRequest, res, next)
 })
 
 async function createGoogleConnectUrl(req: AuthRequest) {
-  const query = z.object({ providerConfigId: z.string().min(1).optional() }).parse(req.query)
+  const query = z.object({ providerConfigId: z.string().min(1).optional(), platform: z.enum(['mobile']).optional() }).parse(req.query)
   const config = query.providerConfigId
     ? await prisma.providerConfig.findFirstOrThrow({ where: { id: query.providerConfigId, OR: [{ userId: req.user!.id }, { userId: null }], provider: 'google_drive', status: 'active' } })
     : await prisma.providerConfig.findFirstOrThrow({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
   const state = randomToken()
-  await prisma.oauthState.create({ data: { userId: req.user!.id, providerConfigId: config.id, flow: 'connect', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
+  await prisma.oauthState.create({ data: { userId: req.user!.id, providerConfigId: config.id, flow: 'connect', mobile: query.platform === 'mobile', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
   const client = createOAuthClient(config)
   return client.generateAuthUrl({
     access_type: 'offline',
@@ -175,9 +176,11 @@ connectedAccountRouter.get('/google/connect', requireAuth, async (req: AuthReque
 })
 
 connectedAccountRouter.get('/google/callback', async (req, res, next) => {
+  let mobile = false
   try {
     const query = z.object({ code: z.string(), state: z.string() }).parse(req.query)
     const oauthState = await prisma.oauthState.findUniqueOrThrow({ where: { stateHash: hashToken(query.state) }, include: { providerConfig: true } })
+    mobile = oauthState.mobile
     if (oauthState.usedAt || oauthState.expiresAt < new Date()) return res.status(400).json({ code: 'GOOGLE_OAUTH_STATE_INVALID', message: 'OAuth state expired.' })
     const client = createOAuthClient(oauthState.providerConfig)
     const tokenResult = await client.getToken(query.code)
@@ -201,7 +204,7 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
       const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
       if (!refreshTokenEncrypted) {
         console.error('Google login failed: no refresh token received and no existing account. Has refresh_token:', !!tokens.refresh_token)
-        return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+        return res.redirect(frontendRedirect('/google-auth?status=error', mobile))
       }
       const account = await prisma.connectedAccount.upsert({
         where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } },
@@ -235,7 +238,7 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
       await syncGoogleQuota(account.id).catch(() => undefined)
       const handoffToken = randomToken()
       await prisma.authHandoff.create({ data: { userId: user.id, tokenHash: hashToken(handoffToken), expiresAt: new Date(Date.now() + 5 * 60_000) } })
-      return res.redirect(`${env.FRONTEND_URL}/google-auth?token=${handoffToken}`)
+      return res.redirect(frontendRedirect(`/google-auth?token=${handoffToken}`, mobile))
     }
 
     if (oauthState.flow !== 'connect' || !oauthState.userId) return res.status(400).json({ code: 'GOOGLE_OAUTH_STATE_INVALID', message: 'OAuth state expired.' })
@@ -273,10 +276,10 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
     })
     await prisma.oauthState.update({ where: { id: oauthState.id }, data: { usedAt: new Date() } })
     await syncGoogleQuota(account.id)
-    return res.redirect(`${env.FRONTEND_URL}/google-connected?status=success`)
+    return res.redirect(frontendRedirect('/google-connected?status=success', mobile))
   } catch (error) {
     console.error('Google OAuth callback failed:', error)
-    return res.redirect(`${env.FRONTEND_URL}/google-connected?status=error`)
+    return res.redirect(frontendRedirect('/google-connected?status=error', mobile))
   }
 })
 

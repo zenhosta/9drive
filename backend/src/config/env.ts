@@ -7,12 +7,16 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   APP_PORT: z.coerce.number().default(4000),
   FRONTEND_URL: z.string().url(),
+  // Deep link base used by the Android app, e.g. 9drive://app. Optional.
+  MOBILE_APP_REDIRECT_URL: z.string().url().optional(),
   JWT_ACCESS_SECRET: z.string().min(32),
   TOKEN_ENCRYPTION_KEY: z.string().min(32),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().default(30),
   MAX_UPLOAD_BYTES: z.coerce.number().default(5 * 1024 * 1024 * 1024),
   RECAPTCHA_SECRET_KEY: z.string().optional(),
+  // Comma-separated emails allowed to use /system routes. Empty disables them.
+  ADMIN_EMAILS: z.string().optional(),
 })
 
 export const env = envSchema.parse(process.env)

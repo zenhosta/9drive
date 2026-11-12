@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input'
 import { API_URL, apiFetch, formatBytes, formatDate } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth'
 import { createPlyr, ensurePlyr } from '@/lib/plyr'
+import { saveBlob } from '@/lib/native'
 import { getPreviewKind, officeViewerUrl } from '@/lib/preview'
 import type { FileItem, FolderItem } from '@/data/drive-data'
 import { useUpload } from '@/context/UploadContext'
@@ -424,13 +425,7 @@ export function AllFilesPage() {
     if (!activeFile?.id) return
     const response = await fetch(`${API_URL}/files/${activeFile.id}/download`, { headers: { Authorization: `Bearer ${getAccessToken()}` } })
     if (!response.ok) throw new Error('Download failed')
-    const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = activeFile.name
-    link.click()
-    URL.revokeObjectURL(url)
+    await saveBlob(await response.blob(), activeFile.name)
     setContextMenu({ x: 0, y: 0, file: null })
   }
 
@@ -449,13 +444,7 @@ export function AllFilesPage() {
         body: JSON.stringify({ fileIds: selectedIds })
       })
       if (!response.ok) throw new Error('Failed to download ZIP file')
-      const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = '9drive-download.zip'
-      link.click()
-      URL.revokeObjectURL(url)
+      await saveBlob(await response.blob(), '9drive-download.zip')
       clearSelection()
       setMessage('Batch download complete.')
     } catch (error) {

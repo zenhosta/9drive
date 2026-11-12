@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { prisma } from '../../config/prisma.js'
 import { hashToken } from '../../utils/crypto.js'
 import { streamProviderFile } from '../files/stream-file.js'
+import { HttpError } from '../../middleware/error.middleware.js'
 
 export const publicRouter = Router()
 
@@ -10,7 +11,7 @@ async function findSharedFile(token: string) {
     where: { enabled: true, AND: [{ OR: [{ token }, { tokenHash: hashToken(token) }] }, { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }] },
     include: { file: { include: { connectedAccount: true } } },
   })
-  if (!share || share.file.status !== 'active') throw new Error('Shared file not found')
+  if (!share || share.file.status !== 'active') throw new HttpError(404, 'FILE_NOT_FOUND', 'Shared file not found.')
   return share.file
 }
 

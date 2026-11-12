@@ -7,6 +7,7 @@ import { GoogleLogo } from '@/components/auth/GoogleLogo'
 import { Input } from '@/components/ui/input'
 import { apiFetch } from '@/lib/api'
 import { setAuthSession, type AuthUser } from '@/lib/auth'
+import { openExternalUrl, withMobilePlatform } from '@/lib/native'
 
 type AuthResponse = { accessToken: string; refreshToken: string; user: AuthUser }
 const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY?.trim()
@@ -61,8 +62,8 @@ export function RegisterPage() {
     setGoogleLoading(true)
     setError('')
     try {
-      const data = await apiFetch<{ url: string }>('/auth/google/url', { skipAuth: true })
-      window.location.href = data.url
+      const data = await apiFetch<{ url: string }>(withMobilePlatform('/auth/google/url'), { skipAuth: true })
+      await openExternalUrl(data.url)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google register failed')
       setGoogleLoading(false)

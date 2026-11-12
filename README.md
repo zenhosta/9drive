@@ -431,12 +431,52 @@ Vite bakes `VITE_API_URL` into the build. Rebuild the frontend, or with Docker r
 
 </details>
 
+## Android app
+
+The `frontend/android` project wraps the same React app with Capacitor, so the APK ships every feature of the web dashboard (files, folders, uploads, sharing, invites, quota, API keys, activity log).
+
+On first launch the app asks for your server URL. Enter the address of your 9Drive instance — a direct backend URL (`https://drive-api.example.com`) and a reverse-proxied site URL (`https://9drive.example.com`) both work; the app picks the working API prefix automatically. You can change the server later from **Settings → Server**.
+
+Google sign-in and "Connect Drive" open in the system browser and return to the app through the `9drive://` deep link. Add this to the backend environment to enable that return:
+
+```env
+MOBILE_APP_REDIRECT_URL=9drive://app
+```
+
+With that variable set the backend also accepts requests from the Capacitor app origin (`https://localhost`).
+
+### Build the APK locally
+
+Requires Node 20+, JDK 21, and Android SDK 36:
+
+```bash
+cd frontend
+npm ci
+npm run build
+npx cap sync android
+cd android && ./gradlew assembleRelease
+```
+
+The APK is written to `frontend/android/app/build/outputs/apk/release/app-release.apk`.
+
+### Release builds in GitHub Actions
+
+`.github/workflows/android-release.yml` builds the APK and attaches it to a GitHub Release.
+
+- Push a tag such as `v1.2.0`, or run the **Android release** workflow manually and optionally pass a version and a default server URL.
+- Add these repository secrets to sign the release: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Without them the APK is debug-signed, which still installs for testing.
+- Optionally set the `RECAPTCHA_SITE_KEY` repository variable to enable captcha in the APK build.
+
 ## Security
 
 - Uploads stream through the backend straight to Google Drive or S3. **Nothing is stored on the server's disk.**
 - Google tokens and S3 credentials are encrypted in MySQL. App refresh tokens, API keys, preview tokens, and auth-handoff tokens are stored only as hashes.
-- CORS only allows `FRONTEND_URL`.
+- Authentication is rate limited, and passwords are hashed with Argon2id.
+- CORS only allows `FRONTEND_URL` (plus the Capacitor origins when the Android deep link is enabled).
+- `update`, `backup`, `restore` and the global Google OAuth configuration are restricted to the operators listed in `ADMIN_EMAILS`.
 - Never commit `.env` files or share `TOKEN_ENCRYPTION_KEY`, `JWT_ACCESS_SECRET`, `RECAPTCHA_SECRET_KEY`, OAuth client secrets, or raw share links you want to keep private.
+
+See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for the full audit, what was fixed, and the remaining hardening work.
 
 ## Project structure
 

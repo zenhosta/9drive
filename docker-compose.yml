@@ -26,6 +26,8 @@ services:
       DATABASE_URL: mysql://${MYSQL_USER:-9drive}:${MYSQL_PASSWORD:-change-this-database-password}@mysql:3306/${MYSQL_DATABASE:-9drive}
       APP_PORT: 4000
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      MOBILE_APP_REDIRECT_URL: ${MOBILE_APP_REDIRECT_URL:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-this-jwt-secret-at-least-32-chars}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-change-this-encryption-key-32bytes!}
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-3600}

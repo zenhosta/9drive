@@ -1,0 +1,117 @@
+name: Android release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: Version name for the APK (defaults to the tag, or 1.0.0)
+        required: false
+      api_url:
+        description: Optional default 9Drive server URL baked into the APK
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VITE_API_URL: ${{ inputs.api_url }}
+      VITE_RECAPTCHA_SITE_KEY: ${{ vars.RECAPTCHA_SITE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version_name }}
+        run: |
+          version="$INPUT_VERSION"
+          if [ -z "$version" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if [ -z "$version" ]; then
+            version="1.0.0"
+          fi
+          echo "name=$version" >> "$GITHUB_OUTPUT"
+          echo "APP_VERSION_NAME=$version" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build web app
+        working-directory: frontend
+        run: npm run build
+
+      - name: Sync Capacitor project
+        working-directory: frontend
+        run: npx cap sync android
+
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No keystore secret set; the release APK is debug-signed."
+          fi
+
+      - name: Build release APK
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Name artifact
+        run: |
+          mkdir -p artifacts
+          cp frontend/android/app/build/outputs/apk/release/app-release.apk "artifacts/9drive-${{ steps.version.outputs.name }}.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 9drive-android-${{ steps.version.outputs.name }}
+          path: artifacts/9drive-*.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/9drive-*.apk
+          generate_release_notes: true

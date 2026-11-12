@@ -355,19 +355,8 @@ fileRouter.get('/:id/view-url', async (req: AuthRequest, res, next) => {
     const auth = await getAuthedGoogleClient(file.connectedAccount)
     const drive = google.drive({ version: 'v3', auth })
 
-    // Automatically set permission to public writer when retrieving/copying the view URL!
-    try {
-      await drive.permissions.create({
-        fileId: file.providerFileId,
-        requestBody: {
-          role: 'writer',
-          type: 'anyone'
-        }
-      })
-    } catch (err: any) {
-      console.error('Failed to make Google Drive file public during view-url retrieval:', err.message || err)
-    }
-
+    // Never widen Drive permissions here: view links are only for the owner and
+    // public sharing is handled explicitly through /files/:id/share.
     const metadata = await drive.files.get({ fileId: file.providerFileId, fields: 'webViewLink,webContentLink' })
     return res.json({ url: metadata.data.webViewLink ?? metadata.data.webContentLink })
   } catch (error) {

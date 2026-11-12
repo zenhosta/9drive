@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { Download, ExternalLink, FileArchive, FileText, ImageIcon, Play, Table2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { API_URL, apiFetch, formatBytes, formatDate } from '@/lib/api'
 import { createPlyr, ensurePlyr } from '@/lib/plyr'
+import { downloadUrl as downloadToDevice, isNative } from '@/lib/native'
 import { getPreviewKind, isSpreadsheetMimeType, officeViewerUrl } from '@/lib/preview'
 
 type PublicFile = { name: string; mimeType: string; sizeBytes: string; createdAt: string }
@@ -17,7 +18,7 @@ function fileIcon(file: PublicFile, kind: ReturnType<typeof getPreviewKind>) {
   return <FileArchive className="h-5 w-5" />
 }
 
-function UnsupportedPreview({ file, downloadUrl }: { file: PublicFile; downloadUrl: string }) {
+function UnsupportedPreview({ file, downloadUrl, onDownload }: { file: PublicFile; downloadUrl: string; onDownload: (event: MouseEvent) => void }) {
   return (
     <div className="flex h-full min-h-[360px] flex-col items-center justify-center px-6 text-center text-slate-300">
       <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-100 shadow-2xl shadow-black/30">
@@ -25,7 +26,7 @@ function UnsupportedPreview({ file, downloadUrl }: { file: PublicFile; downloadU
       </div>
       <h2 className="mt-6 text-xl font-bold text-white">Preview not available</h2>
       <p className="mt-2 max-w-md text-sm text-slate-400">{file.name} cannot be previewed in browser. Download file to open it locally.</p>
-      <a href={downloadUrl} download className="mt-6">
+      <a href={downloadUrl} download className="mt-6" onClick={onDownload}>
         <Button><Download className="h-4 w-4" />Download</Button>
       </a>
     </div>
@@ -40,6 +41,12 @@ export function PublicFilePage({ embed = false }: { embed?: boolean }) {
   const previewUrl = `${API_URL}/public/files/${token}/preview`
   const downloadUrl = `${API_URL}/public/files/${token}/download`
   const kind = getPreviewKind(file?.mimeType)
+
+  function handleDownload(event: MouseEvent) {
+    if (!isNative() || !file) return
+    event.preventDefault()
+    downloadToDevice(downloadUrl, file.name).catch(() => undefined)
+  }
 
   useEffect(() => {
     setFailed(false)
@@ -96,7 +103,7 @@ export function PublicFilePage({ embed = false }: { embed?: boolean }) {
       {kind === 'video' ? <div className="shared-video-shell"><video ref={videoRef} controls playsInline preload="metadata"><source src={previewUrl} type={file.mimeType} /></video></div> : null}
       {kind === 'document' ? <iframe src={previewUrl} title={file.name} className="h-full w-full border-0 bg-white" /> : null}
       {kind === 'office' ? <iframe src={officeViewerUrl(previewUrl)} title={file.name} className="h-full w-full border-0 bg-white" /> : null}
-      {!kind ? <UnsupportedPreview file={file} downloadUrl={downloadUrl} /> : null}
+      {!kind ? <UnsupportedPreview file={file} downloadUrl={downloadUrl} onDownload={handleDownload} /> : null}
     </div>
   )
 
@@ -120,7 +127,7 @@ export function PublicFilePage({ embed = false }: { embed?: boolean }) {
           <a href={`/public/files/${token}/embed`} target="_blank" rel="noreferrer" className="hidden sm:block">
             <Button variant="ghost" className="text-slate-100 hover:bg-white/10"><ExternalLink className="h-4 w-4" />Embed</Button>
           </a>
-          <a href={downloadUrl} download>
+          <a href={downloadUrl} download onClick={handleDownload}>
             <Button variant="outline" className="border-white/10 bg-white/10 text-white hover:bg-white/15"><Download className="h-4 w-4" />Download</Button>
           </a>
         </div>

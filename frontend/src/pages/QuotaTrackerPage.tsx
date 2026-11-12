@@ -5,6 +5,8 @@ import { Card } from '@/components/ui/card'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatBytes } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { openExternalUrl, withMobilePlatform } from '@/lib/native'
+import { isNativeApp } from '@/lib/server'
 
 type StorageSummary = { totalBytes: string; usedBytes: string; availableBytes: string }
 type ConnectedAccount = { id: string; email: string; displayName?: string | null; provider: string; status: string; storageAccount?: { totalBytes: string | null; usedBytes: string; availableBytes: string | null; lastSyncedAt: string | null } | null }
@@ -92,7 +94,26 @@ export function QuotaTrackerPage() {
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
+  useEffect(() => {
+    function onNativeConnected(event: Event) {
+      const detail = (event as CustomEvent<{ status?: string }>).detail
+      setMessage(detail?.status === 'success' ? 'Google Drive connected.' : 'Google Drive connection failed.')
+      load().catch(() => undefined)
+    }
+    window.addEventListener('9drive:google-connected', onNativeConnected)
+    return () => window.removeEventListener('9drive:google-connected', onNativeConnected)
+  }, [])
+
   async function connectDrive() {
+    if (isNativeApp()) {
+      try {
+        const data = await apiFetch<{ url: string }>(withMobilePlatform('/connected-accounts/google/connect-url'))
+        await openExternalUrl(data.url)
+      } catch (e) {
+        console.error('Failed to start Google Drive connection from Quota Tracker', e)
+      }
+      return
+    }
     const popup = window.open('', 'google-drive-connect', 'width=540,height=720')
     if (popup) {
       popup.document.write('<html><head><title>Connecting...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;color:#64748b;}</style></head><body><div style="text-align:center;"><h2>Connecting to Google...</h2><p>Please wait while we redirect you.</p></div></body></html>')
