@@ -110,7 +110,7 @@ jobs:
           cp frontend/android/app/build/outputs/apk/release/app-release.apk "artifacts/9drive-${{ steps.version.outputs.name }}.apk"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: 9drive-android-${{ steps.version.outputs.name }}
           path: artifacts/9drive-*.apk
