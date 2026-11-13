@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9Drive — self-hosted file manager for your own cloud</title>
+<meta name="description" content="9Drive is self-hosted software that puts a fast, modern file manager in front of your own Google Drive or S3 storage.">
+<link rel="icon" href="logo.png">
+<!-- Paste the Search Console verification meta tag here when verifying the domain:
+<meta name="google-site-verification" content="..."> -->
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0f172a; background: #f8fafc; line-height: 1.65; }
+  header { display: flex; align-items: center; gap: .75rem; padding: 1.1rem 1.5rem; border-bottom: 1px solid #e2e8f0; background: #fff; }
+  header img { width: 36px; height: 36px; border-radius: 9px; }
+  header strong { font-size: 1.15rem; letter-spacing: -.01em; }
+  nav { margin-left: auto; display: flex; gap: 1.25rem; font-size: .9rem; }
+  nav a { color: #475569; text-decoration: none; font-weight: 600; }
+  nav a:hover { color: #2563eb; }
+  main { max-width: 860px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+  h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.15; letter-spacing: -.025em; margin: 0 0 .75rem; }
+  .lede { font-size: 1.1rem; color: #475569; max-width: 62ch; }
+  .cta { display: inline-block; margin-top: 1.5rem; background: #2563eb; color: #fff; text-decoration: none; font-weight: 700; padding: .8rem 1.4rem; border-radius: .75rem; }
+  .shot { margin: 2.5rem 0 0; border-radius: 1rem; overflow: hidden; border: 1px solid #e2e8f0; background: #fff; }
+  .shot img { display: block; width: 100%; height: auto; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin-top: 2.5rem; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.15rem 1.25rem; }
+  .card h2 { font-size: 1rem; margin: 0 0 .35rem; }
+  .card p { margin: 0; color: #475569; font-size: .92rem; }
+  footer { border-top: 1px solid #e2e8f0; padding: 1.5rem; text-align: center; font-size: .85rem; color: #64748b; background: #fff; }
+  footer a { color: #475569; }
+</style>
+</head>
+<body>
+<header>
+  <img src="logo.png" alt="9Drive logo">
+  <strong>9Drive</strong>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="terms.html">Terms</a>
+  </nav>
+</header>
+
+<main>
+  <h1>A fast, modern file manager for storage you already own.</h1>
+  <p class="lede">
+    9Drive is self-hosted software that puts a clean web and Android interface in front of
+    your own Google Drive or S3 bucket. Upload, organise, share and restore your files
+    without handing them to yet another cloud provider.
+  </p>
+  <a class="cta" href="https://github.com/Sathyamoorthy143/9drive-testing">Get 9Drive on GitHub</a>
+
+  <figure class="shot">
+    <img src="screenshots/all-files.webp" alt="9Drive file browser showing a grid of files and folders">
+  </figure>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Your storage, your rules</h2>
+      <p>Files live in your Google Drive or S3 account. 9Drive stores metadata and proxies transfers — nothing else.</p>
+    </div>
+    <div class="card">
+      <h2>Folders, search and trash</h2>
+      <p>Nested folders, grid and list views, fast search, soft-delete with a Trash view, and starred files.</p>
+    </div>
+    <div class="card">
+      <h2>Sharing and API keys</h2>
+      <p>Create public links deliberately, and issue scoped API keys for scripted uploads.</p>
+    </div>
+    <div class="card">
+      <h2>Android app</h2>
+      <p>A Capacitor build of the same interface, so your server is one tap away on your phone.</p>
+    </div>
+  </div>
+</main>
+
+<footer>
+  9Drive is open source under the Apache License 2.0 ·
+  <a href="privacy.html">Privacy policy</a> ·
+  <a href="terms.html">Terms of service</a> ·
+  <a href="https://github.com/Sathyamoorthy143/9drive-testing/issues">Support</a>
+</footer>
+</body>
+</html>
