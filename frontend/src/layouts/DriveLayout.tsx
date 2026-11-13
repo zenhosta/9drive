@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/drive/BrandLogo'
+import { BottomNav } from '@/components/drive/BottomNav'
 import { Input } from '@/components/ui/input'
 import { apiFetch, formatBytes } from '@/lib/api'
 import { useUpload } from '@/context/UploadContext'
@@ -207,6 +208,18 @@ export function useDriveLayoutActions() {
 export function DriveLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const pageTitles: Record<string, string> = {
+    '/home': 'Home',
+    '/tree-map': 'Tree Map',
+    '/all-files': 'Files',
+    '/quota': 'Storage',
+    '/settings': 'Settings',
+    '/recent': 'Recent',
+    '/shared': 'Shared',
+    '/starred': 'Starred',
+    '/trash': 'Trash',
+  }
+  const pageTitle = pageTitles[location.pathname] ?? '9Drive'
   const [searchParams] = useSearchParams()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchValue, setSearchValue] = useState(searchParams.get('q') ?? '')
@@ -397,7 +410,7 @@ export function DriveLayout() {
           </div>
           <Sidebar user={user} storage={storage} breakdown={breakdown} onLogout={logout} onNavigate={() => setSidebarOpen(false)} />
         </div>
-        <section className="min-w-0 flex-1 p-4 sm:p-6 lg:h-screen lg:overflow-y-auto lg:p-8">
+        <section className="min-w-0 flex-1 p-4 pb-24 sm:p-6 lg:h-screen lg:overflow-y-auto lg:p-8 lg:pb-8">
           <header className="flex w-full min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center justify-between gap-3 lg:hidden">
               <div className="flex min-w-0 items-center gap-3">
@@ -406,7 +419,7 @@ export function DriveLayout() {
                 </Button>
                 <div className="flex min-w-0 items-center gap-2">
                   <BrandLogo className="h-9 w-9 shrink-0" />
-                  <span className="truncate text-xl font-extrabold tracking-tight">9Drive</span>
+                  <span className="truncate text-xl font-extrabold tracking-tight">{pageTitle}</span>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -563,6 +576,7 @@ export function DriveLayout() {
           )}
         </div>
       ) : null}
+    <BottomNav />
     </main>
   )
 }

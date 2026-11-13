@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -409,4 +410,151 @@ aside .card button.text-orange-600:hover {
   border-color: rgba(239, 68, 68, 0.3) !important;
   color: #ff8787 !important;
   transform: translateY(-1px);
+}
+
+/* ============================================================
+   9Drive "emerald glass" design system
+   Ported from the Stitch screens (Home / Files / Storage / Tree Map)
+   ============================================================ */
+
+:root {
+  --brand: #2fe0a3;
+  --brand-soft: #6ee7b7;
+  --brand-deep: #0f9b76;
+  --brand-warm: #f6c453;
+}
+
+html,
+body {
+  font-family: Outfit, Manrope, ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+:root.dark {
+  --bg-gradient:
+    radial-gradient(at 8% -8%, rgba(16, 185, 129, 0.18) 0px, transparent 55%),
+    radial-gradient(at 92% 0%, rgba(246, 196, 83, 0.07) 0px, transparent 46%),
+    radial-gradient(at 50% 110%, rgba(16, 185, 129, 0.12) 0px, transparent 58%),
+    #06090b;
+  --text-primary: #eaf4f1;
+  --text-secondary: #8ea3a1;
+  --text-bold: #ffffff;
+  --card-bg: linear-gradient(158deg, rgba(22, 34, 36, 0.94) 0%, rgba(10, 16, 18, 0.96) 100%);
+  --card-border: rgba(255, 255, 255, 0.07);
+  --sidebar-bg: rgba(7, 11, 13, 0.9);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --input-bg: rgba(255, 255, 255, 0.045);
+  --input-border: rgba(255, 255, 255, 0.09);
+  --input-focus-bg: rgba(16, 185, 129, 0.08);
+  --shadow-color: rgba(0, 0, 0, 0.45);
+  --shadow-hover: rgba(0, 0, 0, 0.55);
+  --active-nav-bg: linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(20, 184, 166, 0.06) 100%);
+  --active-nav-text: #a7f3d0;
+  --active-nav-border: #2fe0a3;
+  --button-shadow: rgba(16, 185, 129, 0.35);
+  --button-hover-shadow: rgba(16, 185, 129, 0.5);
+  --outline-btn-bg: rgba(255, 255, 255, 0.03);
+  --outline-btn-border: rgba(255, 255, 255, 0.09);
+  --slate-50-override: rgba(255, 255, 255, 0.04);
+  --slate-100-override: rgba(255, 255, 255, 0.07);
+  --slate-200-override: rgba(255, 255, 255, 0.12);
+}
+
+/* Emerald accents replace the previous indigo/blue brand */
+button.bg-blue-600,
+.bg-blue-600 {
+  background: linear-gradient(135deg, #34d399 0%, #14b8a6 100%) !important;
+  color: #04231b !important;
+  box-shadow: 0 10px 26px rgba(16, 185, 129, 0.3) !important;
+}
+
+button.bg-blue-600:hover,
+.bg-blue-600:hover {
+  background: linear-gradient(135deg, #4ade80 0%, #22d3ee 100%) !important;
+  box-shadow: 0 12px 30px rgba(16, 185, 129, 0.42) !important;
+}
+
+.text-blue-600,
+.text-blue-700 {
+  color: #34d399 !important;
+}
+
+.glass-card {
+  background: linear-gradient(158deg, rgba(22, 34, 36, 0.94) 0%, rgba(10, 16, 18, 0.96) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 1.5rem;
+  box-shadow: 0 24px 60px -32px rgba(0, 0, 0, 0.9);
+}
+
+:root.light .glass-card {
+  background: rgba(255, 255, 255, 0.74);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 20px 50px -34px rgba(15, 23, 42, 0.35);
+}
+
+.glass-soft {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1.15rem;
+}
+
+:root.light .glass-soft {
+  background: rgba(15, 23, 42, 0.03);
+  border-color: rgba(15, 23, 42, 0.06);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2.6rem;
+  padding: 0 1.15rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+:root.light .chip {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.chip:hover {
+  color: var(--text-primary);
+  border-color: rgba(47, 224, 163, 0.35);
+}
+
+.chip-active {
+  background: linear-gradient(135deg, #2fe0a3, #14b8a6) !important;
+  color: #04231b !important;
+  border-color: transparent !important;
+  box-shadow: 0 10px 24px rgba(16, 185, 129, 0.34);
+}
+
+.tab-glow {
+  color: var(--text-secondary);
+}
+
+.tab-glow-active {
+  color: #6ee7b7;
+  background: radial-gradient(circle at 50% 120%, rgba(47, 224, 163, 0.28), transparent 70%);
+  text-shadow: 0 0 18px rgba(47, 224, 163, 0.45);
+}
+
+.glow-ring {
+  filter: drop-shadow(0 0 8px rgba(47, 224, 163, 0.55));
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

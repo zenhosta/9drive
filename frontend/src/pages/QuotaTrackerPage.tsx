@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, Cloud, Database, Filter, Gauge, Link2, RefreshCw } from 'lucide-react'
+import { Cloud, Database, Link2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { PageHeader } from '@/components/drive/PageHeader'
@@ -166,23 +166,52 @@ export function QuotaTrackerPage() {
     saveRoutingPolicy({ ...routingPolicy, priorityAccountIds: nextIds }).catch((error) => setMessage(error instanceof Error ? error.message : 'Failed to update routing policy'))
   }
 
+  const totalStorage = Number(summary?.totalBytes ?? 0)
+  const usedStorage = Number(summary?.usedBytes ?? 0)
+  const summaryPercent = totalStorage > 0 ? Math.min(100, Math.round((usedStorage / totalStorage) * 100)) : 0
+
   return (
     <>
-      <PageHeader title="Quota Tracker" description="Track and manage connected provider storage limits." actions={<><Button variant="outline" onClick={() => setAutoRefresh(!autoRefresh)}><CheckCircle className="h-4 w-4" />Auto-refresh {autoRefresh ? 'On' : 'Off'}</Button><Button variant="outline" onClick={refresh} disabled={refreshing}><RefreshCw className={refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{refreshing ? 'Refreshing...' : 'Refresh'}</Button><Button onClick={connectDrive}><Link2 className="h-4 w-4" />Connect Drive</Button></>} />
+      <PageHeader title="Storage" description="Track and manage connected provider storage limits." actions={<><Button variant="outline" onClick={refresh} disabled={refreshing}><RefreshCw className={refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{refreshing ? 'Refreshing...' : 'Refresh'}</Button><Button onClick={connectDrive}><Link2 className="h-4 w-4" />Connect Drive</Button></>} />
       {message ? <p className="mt-5 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
 
-      <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
-        <Card className="p-5"><p className="text-sm text-slate-500">Total Storage</p><p className="mt-2 text-2xl font-extrabold">{formatBytes(summary?.totalBytes)}</p></Card>
-        <Card className="p-5"><p className="text-sm text-slate-500">Used Storage</p><p className="mt-2 text-2xl font-extrabold">{formatBytes(summary?.usedBytes)}</p></Card>
-        <Card className="p-5"><p className="text-sm text-slate-500">Available</p><p className="mt-2 text-2xl font-extrabold">{formatBytes(summary?.availableBytes)}</p></Card>
-        <Card className="p-5"><p className="text-sm text-slate-500">Accounts</p><p className="mt-2 text-2xl font-extrabold">{accounts.length}</p></Card>
+      <section className="glass-card mt-6 p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--text-secondary)]">Cloud Storage</p>
+            <p className="mt-1 text-2xl font-bold text-white">{formatBytes(summary?.usedBytes)} <span className="text-sm font-medium text-[var(--text-secondary)]">of {formatBytes(summary?.totalBytes)}</span></p>
+          </div>
+          <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold text-emerald-300">{summaryPercent}% used</span>
+        </div>
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/8">
+          <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-amber-400 transition-all duration-700" style={{ width: `${summaryPercent}%` }} />
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="glass-soft p-3"><p className="text-[11px] text-[var(--text-secondary)]">Total</p><p className="mt-1 text-sm font-bold text-white">{formatBytes(summary?.totalBytes)}</p></div>
+          <div className="glass-soft p-3"><p className="text-[11px] text-[var(--text-secondary)]">Used</p><p className="mt-1 text-sm font-bold text-white">{formatBytes(summary?.usedBytes)}</p></div>
+          <div className="glass-soft p-3"><p className="text-[11px] text-[var(--text-secondary)]">Free</p><p className="mt-1 text-sm font-bold text-white">{formatBytes(summary?.availableBytes)}</p></div>
+        </div>
+      </section>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <button type="button" onClick={() => setAutoRefresh((value) => !value)} className="glass-card flex items-center justify-between p-4 text-left">
+          <div>
+            <p className="text-sm font-semibold text-white">Auto-refresh quota</p>
+            <p className="text-[11px] text-[var(--text-secondary)]">Sync every 35 seconds</p>
+          </div>
+          <span className={cn('relative h-6 w-11 rounded-full transition-colors', autoRefresh ? 'bg-emerald-400' : 'bg-white/10')}>
+            <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all', autoRefresh ? 'left-5' : 'left-0.5')} />
+          </span>
+        </button>
+        <button type="button" onClick={connectDrive} className="glass-card flex items-center justify-between p-4 text-left">
+          <div>
+            <p className="text-sm font-semibold text-white">Connect a drive</p>
+            <p className="text-[11px] text-[var(--text-secondary)]">{accounts.length} account{accounts.length === 1 ? '' : 's'} connected</p>
+          </div>
+          <Cloud className="h-5 w-5 text-emerald-300" />
+        </button>
       </div>
 
-      <div className="mt-8 flex flex-wrap items-center gap-3">
-        <Button variant="outline"><Filter className="h-4 w-4" />All Providers</Button>
-        <Button variant="outline">All Accounts</Button>
-        <Button variant="soft"><Gauge className="h-4 w-4" />Most available</Button>
-      </div>
 
       <Card className="mt-6 p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
