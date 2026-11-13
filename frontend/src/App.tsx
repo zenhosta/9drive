@@ -24,7 +24,7 @@ import { UploadProvider } from '@/context/UploadContext'
 import { isNativeApp, needsServerSetup } from '@/lib/server'
 
 /**
- * The Android app receives OAuth results through the `9drive://` deep link
+ * The Android app receives OAuth results through the `ninedrive://` deep link
  * (see MOBILE_APP_REDIRECT_URL on the backend), so route them into the same
  * pages the web app uses after a browser redirect.
  */

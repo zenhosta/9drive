@@ -23,12 +23,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- OAuth results are returned by the backend to 9drive://app/... -->
+            <!-- OAuth results are returned by the backend to ninedrive://app/... -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="9drive" />
+                <data android:scheme="ninedrive" />
             </intent-filter>
 
         </activity>

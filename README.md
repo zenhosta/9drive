@@ -437,10 +437,10 @@ The `frontend/android` project wraps the same React app with Capacitor, so the A
 
 On first launch the app asks for your server URL. Enter the address of your 9Drive instance — a direct backend URL (`https://drive-api.example.com`) and a reverse-proxied site URL (`https://9drive.example.com`) both work; the app picks the working API prefix automatically. You can change the server later from **Settings → Server**.
 
-Google sign-in and "Connect Drive" open in the system browser and return to the app through the `9drive://` deep link. Add this to the backend environment to enable that return:
+Google sign-in and "Connect Drive" open in the system browser and return to the app through the `ninedrive://` deep link. Add this to the backend environment to enable that return:
 
 ```env
-MOBILE_APP_REDIRECT_URL=9drive://app
+MOBILE_APP_REDIRECT_URL=ninedrive://app
 ```
 
 With that variable set the backend also accepts requests from the Capacitor app origin (`https://localhost`).

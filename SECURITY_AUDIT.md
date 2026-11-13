@@ -41,7 +41,7 @@ against the `main` branch at commit `6c6ca48` plus the changes in this branch.
 5. **No refresh-token rotation or session/device cap.** A stolen refresh token stays valid until expiry or logout.
 6. **Registration has no password complexity rule beyond 8 characters** and no per-account lockout (only per-IP limiting). Add a breach/complexity check and per-account throttling if this is exposed publicly.
 7. **Malformed `filesMeta` JSON still produces a 500** instead of a 400 (upstream PR #33 addresses this).
-8. **Android specifics:** cleartext HTTP and mixed content are enabled so self-hosted LAN servers work; prefer HTTPS. The `9drive://` deep link is single-use and expires in 5 minutes, but any app can register the scheme — treat the handoff token as sensitive.
+8. **Android specifics:** cleartext HTTP and mixed content are enabled so self-hosted LAN servers work; prefer HTTPS. The `ninedrive://` deep link is single-use and expires in 5 minutes, but any app can register the scheme — treat the handoff token as sensitive.
 9. **Google Drive still receives user files under a `9drive` folder**, and the OAuth scopes are full Drive (`auth/drive`), not least-privilege. Narrowing to `drive.file` would be safer if folder sync allowed it.
 
 ## Configuration required after upgrading
@@ -52,7 +52,7 @@ against the `main` branch at commit `6c6ca48` plus the changes in this branch.
 ADMIN_EMAILS=you@example.com
 
 # Enables Google sign-in to return to the Android app.
-MOBILE_APP_REDIRECT_URL=9drive://app
+MOBILE_APP_REDIRECT_URL=ninedrive://app
 ```
 
 Then apply the new migration:
