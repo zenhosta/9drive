@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from '../../utils/password.js'
 import { encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { signAccessToken } from '../../utils/jwt.js'
 import { frontendRedirect } from '../../utils/redirect.js'
+import { requireGoogleProviderConfig } from '../../utils/google-config.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
 
 export const authRouter = Router()
@@ -94,7 +95,9 @@ authRouter.post('/login', credentialLimiter, async (req, res, next) => {
 authRouter.get('/google/url', credentialLimiter, async (req, res, next) => {
   try {
     const query = z.object({ platform: z.enum(['mobile']).optional() }).parse(req.query)
-    const config = await prisma.providerConfig.findFirstOrThrow({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
+    const config = await requireGoogleProviderConfig({
+      message: 'Google sign-in is unavailable: this server has no Google OAuth credentials yet. Sign in with your email and password instead.',
+    })
     const state = randomToken()
     await prisma.oauthState.create({ data: { providerConfigId: config.id, flow: 'login', mobile: query.platform === 'mobile', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
     const client = createOAuthClient(config)

@@ -7,6 +7,7 @@ import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.
 import { decryptText, encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { hashPassword } from '../../utils/password.js'
 import { frontendRedirect } from '../../utils/redirect.js'
+import { requireGoogleProviderConfig } from '../../utils/google-config.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
 import { syncS3Quota, testS3Connection } from '../s3/s3.service.js'
 
@@ -65,9 +66,7 @@ connectedAccountRouter.get('/', requireAuth, async (req: AuthRequest, res, next)
 
 async function createGoogleConnectUrl(req: AuthRequest) {
   const query = z.object({ providerConfigId: z.string().min(1).optional(), platform: z.enum(['mobile']).optional() }).parse(req.query)
-  const config = query.providerConfigId
-    ? await prisma.providerConfig.findFirstOrThrow({ where: { id: query.providerConfigId, OR: [{ userId: req.user!.id }, { userId: null }], provider: 'google_drive', status: 'active' } })
-    : await prisma.providerConfig.findFirstOrThrow({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
+  const config = await requireGoogleProviderConfig({ configId: query.providerConfigId, userId: req.user!.id })
   const state = randomToken()
   await prisma.oauthState.create({ data: { userId: req.user!.id, providerConfigId: config.id, flow: 'connect', mobile: query.platform === 'mobile', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
   const client = createOAuthClient(config)
@@ -83,7 +82,7 @@ async function createGoogleConnectUrl(req: AuthRequest) {
 connectedAccountRouter.post('/s3', requireAuth, async (req: AuthRequest, res, next) => {
   try {
     const body = s3ConnectSchema.parse(req.body)
-    const providerConfig = await prisma.providerConfig.findFirstOrThrow({ where: { provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
+    const providerConfig = await requireGoogleProviderConfig()
     const providerAccountId = `${body.bucket}:${body.endpoint || body.region}`
     const existingAccount = await prisma.connectedAccount.findUnique({ where: { userId_provider_providerAccountId: { userId: req.user!.id, provider: 's3', providerAccountId } } })
     const account = existingAccount

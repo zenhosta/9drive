@@ -40,7 +40,7 @@ function useDeepLinks() {
       if (!rawUrl || disposed) return
       try {
         const url = new URL(rawUrl)
-        if (url.protocol !== '9drive:') return
+        if (url.protocol !== 'ninedrive:') return
         Browser.close().catch(() => undefined)
         // Connecting a Drive account reuses the current page, so tell it to reload.
         if (url.pathname === '/google-connected') {
