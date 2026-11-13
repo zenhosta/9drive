@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input'
 import { isValidServerUrl, setConfiguredApiUrl } from '@/lib/server'
 
 type ReachableServer = { apiUrl: string; label: string }
+type ProbeFailure = { apiUrl: string; reason: string }
 
-async function findReachableApi(baseUrl: string): Promise<ReachableServer | null> {
+async function findReachableApi(baseUrl: string): Promise<{ server: ReachableServer | null; failures: ProbeFailure[] }> {
   const base = baseUrl.replace(/\/+$/, '')
   // A bare backend answers on /health; a reverse proxy (the Docker setup)
   // serves the same check under /api.
@@ -15,25 +16,31 @@ async function findReachableApi(baseUrl: string): Promise<ReachableServer | null
     { apiUrl: base, label: 'Direct backend' },
     { apiUrl: `${base}/api`, label: 'Reverse proxy' },
   ]
+  const failures: ProbeFailure[] = []
   for (const candidate of candidates) {
     try {
       const response = await fetch(`${candidate.apiUrl}/health`, { signal: AbortSignal.timeout(8000) })
-      if (response.ok) return candidate
-    } catch {
-      // try the next shape
+      if (response.ok) return { server: candidate, failures }
+      failures.push({ apiUrl: candidate.apiUrl, reason: `HTTP ${response.status}` })
+    } catch (err) {
+      // Keep the real cause: a DNS/TLS/CORS failure looks identical to the user
+      // otherwise, and it is the only way to tell a bad URL from a blocked host.
+      failures.push({ apiUrl: candidate.apiUrl, reason: err instanceof Error ? `${err.name}: ${err.message}` : String(err) })
     }
   }
-  return null
+  return { server: null, failures }
 }
 
 export function ServerSetupPage() {
   const [url, setUrl] = useState('')
   const [error, setError] = useState('')
+  const [detail, setDetail] = useState<ProbeFailure[]>([])
   const [connecting, setConnecting] = useState(false)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     const value = url.trim()
+    setDetail([])
     if (!isValidServerUrl(value)) {
       setError('Enter a full server URL, for example https://9drive.example.com')
       return
@@ -41,12 +48,13 @@ export function ServerSetupPage() {
     setConnecting(true)
     setError('')
     try {
-      const reachable = await findReachableApi(value)
-      if (!reachable) {
+      const { server, failures } = await findReachableApi(value)
+      if (!server) {
         setError('Could not reach a 9Drive server at that address. Check the URL and that the backend is running.')
+        setDetail(failures)
         return
       }
-      setConfiguredApiUrl(reachable.apiUrl)
+      setConfiguredApiUrl(server.apiUrl)
       window.location.replace('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not connect to the server')
@@ -82,6 +90,15 @@ export function ServerSetupPage() {
             Use the address where your 9Drive instance is hosted. Both a direct backend URL and a reverse-proxied site URL work.
           </p>
           {error ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p> : null}
+          {detail.length > 0 ? (
+            <ul className="grid gap-1 rounded-xl bg-slate-100 p-3 text-xs text-slate-600">
+              {detail.map((failure) => (
+                <li key={failure.apiUrl} className="break-all">
+                  <span className="font-semibold">{failure.apiUrl}</span> — {failure.reason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <Button disabled={connecting}>{connecting ? 'Checking server...' : 'Connect'}</Button>
         </form>
       </Card>
