@@ -461,9 +461,10 @@ The APK is written to `frontend/android/app/build/outputs/apk/release/app-releas
 
 ### Release builds in GitHub Actions
 
-`.github/workflows/android-release.yml` builds the APK and attaches it to a GitHub Release.
+`.github/workflows/android-release.yml` builds the APK and attaches it to a GitHub Release, automatically.
 
-- Push a tag such as `v1.2.0`, or run the **Android release** workflow manually and optionally pass a version and a default server URL.
+- Every push to `main` publishes the next patch version (`v1.0.0`, then `v1.0.1`, `v1.0.2`, ...). Pushing a tag such as `v1.2.0` releases that exact version instead, and a manual **Android release** run can override the version and pass a default server URL.
+- Each run also keeps the APK as a workflow artifact next to the release.
 - Add these repository secrets to sign the release: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Without them the APK is debug-signed, which still installs for testing.
 - Optionally set the `RECAPTCHA_SITE_KEY` repository variable to enable captcha in the APK build.
 

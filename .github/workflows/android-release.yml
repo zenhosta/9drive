@@ -1,13 +1,19 @@
 name: Android release
 
+# Releases are automatic: every push to main builds the APK and publishes a
+# GitHub Release with the next patch version (v1.0.0, v1.0.1, ...). Pushing a
+# tag uses that tag's version instead, and manual dispatch is still available
+# for rebuilds and for baking a default server URL into the APK.
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       version_name:
-        description: Version name for the APK (defaults to the tag, or 1.0.0)
+        description: Version name for the APK (defaults to the tag, or the auto-incremented version)
         required: false
       api_url:
         description: Optional default 9Drive server URL baked into the APK
@@ -47,7 +53,7 @@ jobs:
       # currently broken there (it tries to install the removed `tools`
       # package), so install the platform components directly.
       - name: Install Android platform
-        run: |
+        run: |-
           set -euo pipefail
           SDKMANAGER="$(command -v sdkmanager || true)"
           if [ -z "$SDKMANAGER" ]; then
@@ -56,19 +62,38 @@ jobs:
           yes | "$SDKMANAGER" --licenses > /dev/null || true
           "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
 
+      # Version resolution, in priority order:
+      #   1. the version_name input from a manual run
+      #   2. the pushed tag (v1.2.3 -> 1.2.3)
+      #   3. the highest existing v* tag with its patch bumped, else 1.0.0
       - name: Resolve version
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version_name }}
-        run: |
-          version="$INPUT_VERSION"
+        run: |-
+          set -euo pipefail
+          version="${INPUT_VERSION:-}"
           if [ -z "$version" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
             version="${GITHUB_REF_NAME#v}"
           fi
           if [ -z "$version" ]; then
-            version="1.0.0"
+            latest="$(git ls-remote --tags --refs origin 'v*' \
+              | sed 's|.*refs/tags/v||' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -1 || true)"
+            if [ -z "$latest" ]; then
+              version="1.0.0"
+            else
+              major="${latest%%.*}"
+              rest="${latest#*.}"
+              minor="${rest%%.*}"
+              patch="${rest##*.}"
+              version="$major.$minor.$((patch + 1))"
+            fi
+            echo "::notice::Auto version $version (previous: ${latest:-none})"
           fi
           echo "name=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "APP_VERSION_NAME=$version" >> "$GITHUB_ENV"
           echo "APP_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
 
@@ -90,7 +115,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
+        run: |-
           if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
             echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
@@ -100,25 +125,31 @@ jobs:
 
       - name: Build release APK
         working-directory: frontend/android
-        run: |
+        run: |-
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Name artifact
-        run: |
+        run: |-
           mkdir -p artifacts
           cp frontend/android/app/build/outputs/apk/release/app-release.apk "artifacts/9drive-${{ steps.version.outputs.name }}.apk"
 
-      - name: Upload APK
+      - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v5
         with:
           name: 9drive-android-${{ steps.version.outputs.name }}
           path: artifacts/9drive-*.apk
           if-no-files-found: error
 
+      # Runs on every trigger, so a merge to main is enough to publish. The
+      # action creates the tag when it does not exist yet, which also makes the
+      # next auto version increment from it.
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: 9Drive ${{ steps.version.outputs.name }}
+          target_commitish: ${{ github.sha }}
           files: artifacts/9drive-*.apk
           generate_release_notes: true
+          fail_on_unmatched_files: true
