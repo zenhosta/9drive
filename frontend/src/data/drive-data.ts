@@ -17,6 +17,7 @@ export type FileItem = {
   sizeBytes?: string
   access: string
   accountEmail?: string
+  accountId?: string
   accountProvider?: string
   createdAt?: string
   kind: 'doc' | 'image' | 'video' | 'pdf'

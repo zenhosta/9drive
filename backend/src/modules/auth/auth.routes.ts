@@ -139,6 +139,7 @@ authRouter.get('/google/callback', async (req, res) => {
         tokenExpiresAt: new Date(tokens.expiry_date ?? Date.now() + 3600_000),
         scopes: oauthState.providerConfig.scopes as string[],
         status: 'connected',
+        lastError: null,
       },
     })
 

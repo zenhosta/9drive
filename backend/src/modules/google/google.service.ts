@@ -150,10 +150,14 @@ export async function syncGoogleAppFolderFiles(accountId: string, userId: string
   let deleted = 0
 
   const folderIdMap = new Map(userFolders.map((f) => [f.providerFolderId, f.id]))
+  const accountFolderIds = new Set(userFolders.map((f) => f.id))
 
   for (const driveFile of driveFiles) {
-    const dbFolderId = driveFile.parentId === appFolderId ? null : (folderIdMap.get(driveFile.parentId) ?? null)
     const existing = existingByProviderId.get(driveFile.id)
+    let dbFolderId = driveFile.parentId === appFolderId ? null : (folderIdMap.get(driveFile.parentId) ?? null)
+    // A file moved here from another drive sits in this drive's root but keeps its virtual folder in 9Drive;
+    // don't reset it to "no folder" just because that folder isn't mirrored on this account.
+    if (dbFolderId === null && existing?.folderId && !accountFolderIds.has(existing.folderId)) dbFolderId = existing.folderId
     if (!existing) {
       await prisma.file.create({
         data: { userId, connectedAccountId: account.id, provider: 'google_drive', providerFileId: driveFile.id, name: driveFile.name, mimeType: driveFile.mimeType, sizeBytes: driveFile.sizeBytes, status: 'active', folderId: dbFolderId },
@@ -172,7 +176,19 @@ export async function syncGoogleAppFolderFiles(accountId: string, userId: string
     }
   }
 
-  const missingActiveIds = existingFiles.filter((file) => file.status === 'active' && !driveFileIds.has(file.providerFileId)).map((file) => file.id)
+  // Files can legitimately live outside the 9drive folder (e.g. moved into a folder the user picked), so a file that
+  // is merely absent from the listing is only marked deleted if Drive confirms it is gone or trashed.
+  const missingCandidates = existingFiles.filter((file) => file.status === 'active' && !driveFileIds.has(file.providerFileId))
+  const missingActiveIds: string[] = []
+  for (const file of missingCandidates) {
+    try {
+      const meta = await drive.files.get({ fileId: file.providerFileId, fields: 'id,trashed' })
+      if (meta.data.trashed) missingActiveIds.push(file.id)
+    } catch (error) {
+      if ((error as { code?: number }).code === 404) missingActiveIds.push(file.id)
+      // any other error: keep the file rather than risk hiding it
+    }
+  }
   if (missingActiveIds.length > 0) {
     const result = await prisma.file.updateMany({ where: { id: { in: missingActiveIds }, userId }, data: { status: 'deleted', deletedAt: new Date() } })
     deleted = result.count
