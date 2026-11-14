@@ -14,8 +14,7 @@ import { FolderGrid, type FolderSizeScale } from '@/components/drive/FolderGrid'
 import { defaultFolderColor, defaultFolderIconUrl, folderColorOptions, folderIconOptions, normalizeFolderColor } from '@/components/drive/FolderVisual'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { Input } from '@/components/ui/input'
-import { API_URL, apiFetch, formatBytes, formatDate } from '@/lib/api'
-import { getAccessToken } from '@/lib/auth'
+import { API_URL, apiFetch, formatBytes, formatDate, getCsrfToken } from '@/lib/api'
 import { createPlyr, ensurePlyr } from '@/lib/plyr'
 import { getPreviewKind, officeViewerUrl } from '@/lib/preview'
 import type { FileItem, FolderItem } from '@/data/drive-data'
@@ -422,7 +421,7 @@ export function AllFilesPage() {
 
   async function downloadFile() {
     if (!activeFile?.id) return
-    const response = await fetch(`${API_URL}/files/${activeFile.id}/download`, { headers: { Authorization: `Bearer ${getAccessToken()}` } })
+    const response = await fetch(`${API_URL}/files/${activeFile.id}/download`, { credentials: 'include' })
     if (!response.ok) throw new Error('Download failed')
     const blob = await response.blob()
     const url = URL.createObjectURL(blob)
@@ -444,8 +443,9 @@ export function AllFilesPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAccessToken()}`
+          'X-CSRF-Token': getCsrfToken()
         },
+        credentials: 'include',
         body: JSON.stringify({ fileIds: selectedIds })
       })
       if (!response.ok) throw new Error('Failed to download ZIP file')

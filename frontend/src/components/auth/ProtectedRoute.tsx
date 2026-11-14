@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom'
-import { getAccessToken } from '@/lib/auth'
+import { getStoredUser } from '@/lib/auth'
 
 export function ProtectedRoute() {
-  return getAccessToken() ? <Outlet /> : <Navigate to="/login" replace />
+  return getStoredUser() ? <Outlet /> : <Navigate to="/login" replace />
 }

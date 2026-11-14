@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { apiFetch } from '@/lib/api'
 import { setAuthSession, type AuthUser } from '@/lib/auth'
 
-type AuthResponse = { accessToken: string; refreshToken: string; user: AuthUser }
+type AuthResponse = { user: AuthUser }
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -36,7 +36,7 @@ export function LoginPage() {
     setError('')
     try {
       const data = await apiFetch<AuthResponse>('/auth/login', { method: 'POST', skipAuth: true, body: JSON.stringify({ email, password }) })
-      setAuthSession(data.accessToken, data.refreshToken, data.user)
+      setAuthSession(data.user)
       navigate('/all-files')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')

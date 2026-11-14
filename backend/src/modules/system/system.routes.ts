@@ -1,16 +1,36 @@
 import { Router } from 'express'
-import { exec, spawn } from 'child_process'
+import { exec, execFile, spawn } from 'child_process'
+import { promisify } from 'util'
+import os from 'os'
 import path from 'path'
 import fs from 'fs'
-import { requireAuth } from '../../middleware/auth.middleware.js'
+import { requireAdmin, type AuthRequest } from '../../middleware/auth.middleware.js'
 import { prisma } from '../../config/prisma.js'
 import { decryptText, encryptText } from '../../utils/crypto.js'
 import Busboy from 'busboy'
 
 export const systemRouter = Router()
+const execFileAsync = promisify(execFile)
+
+function mysqlConnection() {
+  const databaseUrl = process.env.DATABASE_URL
+  if (!databaseUrl?.startsWith('mysql://')) throw new Error('MySQL database configuration is required.')
+  const url = new URL(databaseUrl)
+  return {
+    host: url.hostname,
+    port: url.port || '3306',
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: url.pathname.replace(/^\//, '').split('?')[0],
+  }
+}
+
+function mysqlArgs(connection: ReturnType<typeof mysqlConnection>) {
+  return ['--host', connection.host, '--port', connection.port, '--user', connection.user, connection.database]
+}
 
 
-systemRouter.post('/update', requireAuth, (req, res, next) => {
+systemRouter.post('/update', requireAdmin, (req, res, next) => {
   const projectRoot = path.resolve(process.cwd(), '..')
   const updateScript = path.join(projectRoot, 'update.sh')
 
@@ -19,7 +39,7 @@ systemRouter.post('/update', requireAuth, (req, res, next) => {
     if (gitError) {
       return res.status(400).json({
         code: 'GIT_NOT_FOUND',
-        message: 'Git is not installed inside the app container. Since you are running 9Drive in Docker, please update by running:\n\n1. ssh root@103.65.237.136\n2. cd 9drive\n3. git pull\n4. docker-compose down && docker-compose up -d --build\n\ndirectly in your VPS host terminal.'
+        message: 'System update is unavailable on this server.'
       })
     }
 
@@ -43,8 +63,7 @@ systemRouter.post('/update', requireAuth, (req, res, next) => {
       } catch (err: any) {
         return res.status(500).json({
           code: 'UPDATE_FAILED',
-          message: 'Failed to start update script.',
-          error: err.message
+          message: 'Failed to start system update.'
         })
       }
     } else {
@@ -54,9 +73,7 @@ systemRouter.post('/update', requireAuth, (req, res, next) => {
           console.error('System update failed:', error)
           return res.status(500).json({
             code: 'UPDATE_FAILED',
-            message: 'Failed to run git pull. Make sure git is installed and configured.',
-            error: error.message,
-            stderr
+            message: 'Failed to update the system.'
           })
         }
 
@@ -67,16 +84,14 @@ systemRouter.post('/update', requireAuth, (req, res, next) => {
 
         return res.json({
           status: 'success',
-          message: 'System code updated successfully. Dev servers will auto-restart.',
-          stdout,
-          stderr
+          message: 'System code updated successfully. Dev servers will auto-restart.'
         })
       })
     }
   })
 })
 
-systemRouter.get('/update-log', requireAuth, (req, res) => {
+systemRouter.get('/update-log', requireAdmin, (req, res) => {
   const projectRoot = path.resolve(process.cwd(), '..')
   const logFile = path.join(projectRoot, 'update.log')
 
@@ -100,7 +115,7 @@ systemRouter.get('/update-log', requireAuth, (req, res) => {
   }
 })
 
-systemRouter.get('/google-config', requireAuth, async (req, res, next) => {
+systemRouter.get('/google-config', requireAdmin, async (req: AuthRequest, res, next) => {
   try {
     const config = await prisma.providerConfig.findFirst({
       where: { userId: null, provider: 'google_drive', status: 'active' },
@@ -135,7 +150,7 @@ systemRouter.get('/google-config', requireAuth, async (req, res, next) => {
   }
 })
 
-systemRouter.post('/google-config', requireAuth, async (req, res, next) => {
+systemRouter.post('/google-config', requireAdmin, async (req, res, next) => {
   try {
     const { clientId, clientSecret, redirectUri } = req.body
 
@@ -200,121 +215,69 @@ systemRouter.post('/google-config', requireAuth, async (req, res, next) => {
   }
 })
 
-systemRouter.get('/backup', requireAuth, (req, res, next) => {
+systemRouter.get('/backup', requireAdmin, async (req, res, next) => {
+  let temporaryDirectory = ''
   try {
-    const dbPath = getDatabaseFilePath()
-    if (!fs.existsSync(dbPath)) {
-      return res.status(404).json({ code: 'NOT_FOUND', message: 'Database file not found.' })
-    }
-    res.setHeader('Content-Disposition', 'attachment; filename=9drive-backup.db')
-    res.setHeader('Content-Type', 'application/octet-stream')
-    const fileStream = fs.createReadStream(dbPath)
+    const connection = mysqlConnection()
+    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), '9drive-backup-'))
+    const backupPath = path.join(temporaryDirectory, '9drive-backup.sql')
+    await execFileAsync('mysqldump', ['--single-transaction', '--routines', '--events', ...mysqlArgs(connection), '--result-file', backupPath], { env: { ...process.env, MYSQL_PWD: connection.password } })
+    res.setHeader('Content-Disposition', 'attachment; filename=9drive-backup.sql')
+    res.setHeader('Content-Type', 'application/sql')
+    const fileStream = fs.createReadStream(backupPath)
+    fileStream.on('close', () => fs.rmSync(temporaryDirectory, { recursive: true, force: true }))
     fileStream.pipe(res)
   } catch (error) {
+    if (temporaryDirectory) fs.rmSync(temporaryDirectory, { recursive: true, force: true })
     return next(error)
   }
 })
 
-systemRouter.post('/restore', requireAuth, (req, res, next) => {
+systemRouter.post('/restore', requireAdmin, async (req, res, next) => {
+  let temporaryDirectory = ''
   try {
+    if (req.header('x-restore-confirm') !== 'RESTORE-9DRIVE') return res.status(400).json({ code: 'RESTORE_CONFIRMATION_REQUIRED', message: 'Explicit restore confirmation is required.' })
     const contentType = req.headers['content-type']
     if (!contentType?.includes('multipart/form-data')) {
       return res.status(400).json({ code: 'BAD_REQUEST', message: 'multipart/form-data required.' })
     }
 
     const busboy = Busboy({ headers: req.headers, limits: { files: 1 } })
+    temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), '9drive-restore-'))
+    const restorePath = path.join(temporaryDirectory, 'restore.sql')
     let fileReceived = false
-
-    busboy.on('file', (name, fileStream, info) => {
-      fileReceived = true
-      const dbPath = getDatabaseFilePath()
-      const tempDbPath = dbPath + '.tmp'
-      const writeStream = fs.createWriteStream(tempDbPath)
-
-      fileStream.pipe(writeStream)
-
-      writeStream.on('finish', async () => {
-        try {
-          // Disconnect prisma client first to release database lock
-          await prisma.$disconnect()
-
-          // Replace old database file with restored database file
-          fs.renameSync(tempDbPath, dbPath)
-
-          res.json({
-            status: 'success',
-            message: 'Database restored successfully. Server will restart in 2 seconds.'
-          })
-
-          // Graceful exit after response is sent
-          setTimeout(() => {
-            console.log('Database restored. Exiting to allow PM2 restart.')
-            process.exit(0)
-          }, 2000)
-
-        } catch (err: any) {
-          if (fs.existsSync(tempDbPath)) {
-            try { fs.unlinkSync(tempDbPath) } catch {}
-          }
-          console.error('Failed to restore database:', err)
-          return res.status(500).json({
-            code: 'RESTORE_FAILED',
-            message: 'Failed to restore database.',
-            error: err.message
-          })
-        }
+    const writePromise = new Promise<void>((resolve, reject) => {
+      busboy.on('file', (_name, fileStream) => {
+        fileReceived = true
+        fileStream.pipe(fs.createWriteStream(restorePath).on('finish', resolve).on('error', reject))
       })
-
-      writeStream.on('error', (err) => {
-        if (fs.existsSync(tempDbPath)) {
-          try { fs.unlinkSync(tempDbPath) } catch {}
-        }
-        console.error('Write error on temp DB:', err)
-        return res.status(500).json({
-          code: 'WRITE_ERROR',
-          message: 'Failed to write temporary database file.',
-          error: err.message
-        })
+      busboy.on('error', reject)
+      busboy.on('finish', () => {
+        if (!fileReceived) reject(new Error('No file uploaded.'))
       })
     })
-
-    busboy.on('error', (err) => {
-      console.error('Busboy error:', err)
-      if (!res.headersSent) {
-        next(err)
-      }
-    })
-
-    busboy.on('finish', () => {
-      if (!fileReceived && !res.headersSent) {
-        return res.status(400).json({ code: 'BAD_REQUEST', message: 'No file uploaded.' })
-      }
-    })
-
     req.pipe(busboy)
+    await writePromise
+    const header = Buffer.alloc(4096)
+    const descriptor = fs.openSync(restorePath, 'r')
+    const bytesRead = fs.readSync(descriptor, header, 0, header.length, 0)
+    fs.closeSync(descriptor)
+    if (!bytesRead || !header.subarray(0, bytesRead).toString('utf8').includes('MySQL')) throw new Error('Backup format validation failed.')
+
+    const connection = mysqlConnection()
+    const restoreProcess = spawn('mysql', mysqlArgs(connection), { env: { ...process.env, MYSQL_PWD: connection.password }, stdio: ['pipe', 'ignore', 'pipe'] })
+    const diagnostics: Buffer[] = []
+    restoreProcess.stderr.on('data', (chunk) => diagnostics.push(Buffer.from(chunk)))
+    fs.createReadStream(restorePath).pipe(restoreProcess.stdin)
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      restoreProcess.on('error', reject)
+      restoreProcess.on('close', (code) => resolve(code ?? 1))
+    })
+    if (exitCode !== 0) throw new Error(`MySQL restore failed: ${diagnostics.join('').slice(0, 500)}`)
+    return res.json({ status: 'success', message: 'MySQL database restored successfully.' })
   } catch (error) {
     return next(error)
+  } finally {
+    if (temporaryDirectory) fs.rmSync(temporaryDirectory, { recursive: true, force: true })
   }
 })
-
-function getDatabaseFilePath(): string {
-  const dbUrl = process.env.DATABASE_URL || 'file:./dev.db'
-  let cleanPath = dbUrl.replace(/^(sqlite|file):/, '')
-
-  if (cleanPath.includes('?')) {
-    cleanPath = cleanPath.split('?')[0]
-  }
-
-  if (!path.isAbsolute(cleanPath)) {
-    let baseDir = path.resolve(process.cwd(), 'prisma')
-    if (!fs.existsSync(baseDir)) {
-      baseDir = path.resolve(process.cwd(), 'backend', 'prisma')
-    }
-    if (!fs.existsSync(baseDir)) {
-      baseDir = path.resolve(process.cwd(), '..', 'backend', 'prisma')
-    }
-    return path.resolve(baseDir, cleanPath)
-  }
-
-  return cleanPath
-}

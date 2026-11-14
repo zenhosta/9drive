@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DummyModal } from '@/components/drive/DummyModal'
 import { PageHeader } from '@/components/drive/PageHeader'
-import { apiFetch, formatBytes, API_URL } from '@/lib/api'
+import { apiFetch, formatBytes, API_URL, getCsrfToken } from '@/lib/api'
 import { getGravatarUrl } from '@/lib/gravatar'
-import { getStoredUser, getAccessToken, clearAuthSession } from '@/lib/auth'
+import { getStoredUser, clearAuthSession } from '@/lib/auth'
 
 type ConnectedAccount = { id: string; provider: string; email: string; displayName?: string | null; status: string; storageAccount?: { totalBytes: string | null; usedBytes: string; availableBytes: string | null; lastSyncedAt: string | null } | null }
 
@@ -70,11 +70,8 @@ export function SettingsPage() {
   async function downloadBackup() {
     setDownloadingBackup(true)
     try {
-      const token = getAccessToken()
       const response = await fetch(`${API_URL}/system/backup`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include'
       })
       if (!response.ok) {
         throw new Error('Failed to retrieve database backup.')
@@ -83,7 +80,7 @@ export function SettingsPage() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = '9drive-backup.db'
+      a.download = '9drive-backup.sql'
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -114,15 +111,16 @@ export function SettingsPage() {
     setRestoreSuccess(false)
 
     try {
-      const token = getAccessToken()
       const formData = new FormData()
       formData.append('file', restoreFile)
 
       const response = await fetch(`${API_URL}/system/restore`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`
+          'x-restore-confirm': 'RESTORE-9DRIVE',
+          'X-CSRF-Token': getCsrfToken()
         },
+        credentials: 'include',
         body: formData
       })
 

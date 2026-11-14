@@ -10,13 +10,14 @@ async function findSharedFile(token: string) {
     where: { enabled: true, AND: [{ OR: [{ token }, { tokenHash: hashToken(token) }] }, { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }] },
     include: { file: { include: { connectedAccount: true } } },
   })
-  if (!share || share.file.status !== 'active') throw new Error('Shared file not found')
+  if (!share || share.file.status !== 'active') return null
   return share.file
 }
 
 publicRouter.get('/files/:token', async (req, res, next) => {
   try {
     const file = await findSharedFile(String(req.params.token))
+    if (!file) return res.status(404).json({ code: 'SHARED_FILE_NOT_FOUND', message: 'Shared file not found.' })
     return res.json({ file: { id: file.id, name: file.name, mimeType: file.mimeType, sizeBytes: file.sizeBytes.toString(), createdAt: file.createdAt } })
   } catch (error) {
     return next(error)
@@ -26,6 +27,7 @@ publicRouter.get('/files/:token', async (req, res, next) => {
 publicRouter.get('/files/:token/download', async (req, res, next) => {
   try {
     const file = await findSharedFile(String(req.params.token))
+    if (!file) return res.status(404).json({ code: 'SHARED_FILE_NOT_FOUND', message: 'Shared file not found.' })
     return streamProviderFile(file, req.headers.range, res, { disposition: 'attachment' })
   } catch (error) {
     return next(error)
@@ -35,6 +37,7 @@ publicRouter.get('/files/:token/download', async (req, res, next) => {
 publicRouter.get('/files/:token/preview', async (req, res, next) => {
   try {
     const file = await findSharedFile(String(req.params.token))
+    if (!file) return res.status(404).json({ code: 'SHARED_FILE_NOT_FOUND', message: 'Shared file not found.' })
     return streamProviderFile(file, req.headers.range, res, { disposition: 'inline' })
   } catch (error) {
     return next(error)

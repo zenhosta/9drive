@@ -6,6 +6,7 @@ COPY package*.json ./
 COPY prisma ./prisma
 
 RUN npm ci
+RUN apk add --no-cache mysql-client
 
 COPY tsconfig.json ./
 COPY src ./src

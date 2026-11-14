@@ -15,22 +15,32 @@ import { apiKeyRouter } from './modules/api-keys/api-key.routes.js'
 import { publicApiRouter } from './modules/public-api/public-api.routes.js'
 import { auditLogRouter } from './modules/audit-logs/audit-log.routes.js'
 import { systemRouter } from './modules/system/system.routes.js'
+import { rateLimit } from './middleware/rate-limit.middleware.js'
+import { csrfMiddleware } from './middleware/csrf.middleware.js'
 
 export const app = express()
-app.set('trust proxy', true)
+app.set('trust proxy', env.TRUST_PROXY)
 
-app.use(cors({ origin: env.FRONTEND_URL }))
+app.use(cors({ origin: env.FRONTEND_URL, credentials: true }))
+app.use(csrfMiddleware)
+app.use((_req, res, next) => {
+	res.setHeader('X-Content-Type-Options', 'nosniff')
+	res.setHeader('X-Frame-Options', 'DENY')
+	res.setHeader('Referrer-Policy', 'no-referrer')
+	res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'")
+	return next()
+})
 app.use(express.json({ limit: '1mb' }))
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }))
-app.use('/api', publicApiRouter)
-app.use('/public', publicRouter)
-app.use('/auth', authRouter)
-app.use('/api-keys', apiKeyRouter)
+app.use('/api', rateLimit('external-api', 60, 60_000), publicApiRouter)
+app.use('/public', rateLimit('public-files', 120, 60_000), publicRouter)
+app.use('/auth', rateLimit('auth', 30, 60_000), authRouter)
+app.use('/api-keys', rateLimit('api-keys', 60, 60_000), apiKeyRouter)
 app.use('/provider-configs', providerConfigRouter)
 app.use('/connected-accounts', connectedAccountRouter)
 app.use('/storage', storageRouter)
-app.use('/uploads', uploadRouter)
+app.use('/uploads', rateLimit('uploads', 30, 60_000), uploadRouter)
 app.use('/files', fileRouter)
 app.use('/folders', folderRouter)
 app.use('/invites', inviteRouter)

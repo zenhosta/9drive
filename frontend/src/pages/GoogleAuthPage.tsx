@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card'
 import { apiFetch } from '@/lib/api'
 import { setAuthSession, type AuthUser } from '@/lib/auth'
 
-type AuthResponse = { accessToken: string; refreshToken: string; user: AuthUser }
+type AuthResponse = { user: AuthUser }
 
 export function GoogleAuthPage() {
   const [params] = useSearchParams()
@@ -22,7 +22,7 @@ export function GoogleAuthPage() {
 
     apiFetch<AuthResponse>('/auth/google/exchange', { method: 'POST', skipAuth: true, body: JSON.stringify({ token }) })
       .then((data) => {
-        setAuthSession(data.accessToken, data.refreshToken, data.user)
+        setAuthSession(data.user)
         navigate('/all-files', { replace: true })
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Google sign-in failed. Please try again.'))

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { apiFetch } from '@/lib/api'
 import { setAuthSession, type AuthUser } from '@/lib/auth'
 
-type AuthResponse = { accessToken: string; refreshToken: string; user: AuthUser }
+type AuthResponse = { user: AuthUser }
 const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY?.trim()
 
 declare global {
@@ -80,7 +80,7 @@ export function RegisterPage() {
     }
     try {
       const data = await apiFetch<AuthResponse>('/auth/register', { method: 'POST', skipAuth: true, body: JSON.stringify({ name, email, password, captchaToken }) })
-      setAuthSession(data.accessToken, data.refreshToken, data.user)
+      setAuthSession(data.user)
       navigate('/all-files')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Register failed')

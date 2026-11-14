@@ -1,4 +1,4 @@
-import { clearAuthSession, getAccessToken, getRefreshToken, setAccessToken } from '@/lib/auth'
+import { clearAuthSession } from '@/lib/auth'
 
 const isProd = import.meta.env.PROD
 const rawApiUrl = import.meta.env.VITE_API_URL
@@ -10,26 +10,28 @@ export const API_URL = (rawApiUrl && rawApiUrl !== 'http://localhost:4000')
 type ApiOptions = RequestInit & { skipAuth?: boolean; retry?: boolean }
 
 async function refreshAccessToken() {
-  const refreshToken = getRefreshToken()
-  if (!refreshToken) return false
+  const csrfToken = getCsrfToken()
   const response = await fetch(`${API_URL}/auth/refresh`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
+    credentials: 'include',
+    headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined,
   })
   if (!response.ok) return false
-  const data = await response.json() as { accessToken: string }
-  setAccessToken(data.accessToken)
   return true
+}
+
+export function getCsrfToken() {
+  return document.cookie.split('; ').find((value) => value.startsWith('9drive.csrf='))?.split('=').slice(1).join('=') ?? ''
 }
 
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const headers = new Headers(options.headers)
-  const token = getAccessToken()
-  if (!options.skipAuth && token) headers.set('Authorization', `Bearer ${token}`)
+  const method = (options.method ?? 'GET').toUpperCase()
+  const csrfToken = getCsrfToken()
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && csrfToken) headers.set('X-CSRF-Token', csrfToken)
   if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers })
+  const response = await fetch(`${API_URL}${path}`, { ...options, credentials: 'include', headers })
   if (response.status === 401 && options.retry !== false && !options.skipAuth && await refreshAccessToken()) {
     return apiFetch<T>(path, { ...options, retry: false })
   }

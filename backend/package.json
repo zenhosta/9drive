@@ -6,6 +6,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:integration": "prisma migrate deploy && vitest run src/integration/security.integration.test.ts",
     "start:deploy": "npm run db:migrate:deploy && node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -26,6 +28,7 @@
     "archiver": "^8.0.0",
     "argon2": "^0.44.0",
     "busboy": "^1.6.0",
+    "cookie": "^1.1.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
@@ -38,11 +41,15 @@
   "devDependencies": {
     "@types/archiver": "^8.0.0",
     "@types/busboy": "^1.5.4",
+    "@types/cookie": "^1.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.9.1",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.3.2",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.7"
   }
 }

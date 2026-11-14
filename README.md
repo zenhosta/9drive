@@ -248,6 +248,8 @@ Either way, the credentials are encrypted and stored in MySQL as one global conf
 
 ## Configuration
 
+Administrative endpoints require a user with `role=admin` or an email listed in `ADMIN_EMAILS` (comma-separated). Global Google OAuth configuration, system updates, and database backup/restore are administrator-only. Google Drive uploads remain private unless a user explicitly grants a public permission; read-only is the default and writer access requires confirmation.
+
 <details>
 <summary><b>Backend environment variables</b> (<code>backend/.env</code>)</summary>
 

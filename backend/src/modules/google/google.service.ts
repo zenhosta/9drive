@@ -10,6 +10,14 @@ export function createOAuthClient(config: ProviderConfig) {
   return new google.auth.OAuth2(decryptText(config.clientIdEncrypted), decryptText(config.clientSecretEncrypted), config.redirectUri)
 }
 
+export async function revokeGoogleAccount(account: ConnectedAccount) {
+  if (!account.providerConfigId) throw new Error('Google provider config is missing.')
+  const config = await prisma.providerConfig.findUniqueOrThrow({ where: { id: account.providerConfigId } })
+  const client = createOAuthClient(config)
+  const token = account.refreshTokenEncrypted ?? account.accessTokenEncrypted
+  if (token) await client.revokeToken(decryptText(token))
+}
+
 export async function getAuthedGoogleClient(account: ConnectedAccount) {
   if (!account.accessTokenEncrypted || !account.refreshTokenEncrypted || !account.tokenExpiresAt) throw new Error('Google account tokens are missing.')
   if (!account.providerConfigId) throw new Error('Google provider config is missing.')

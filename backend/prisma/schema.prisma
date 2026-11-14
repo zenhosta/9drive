@@ -13,6 +13,7 @@ model User {
   email          String             @unique @db.VarChar(191)
   passwordHash   String             @map("password_hash") @db.VarChar(255)
   status         String             @default("active") @db.VarChar(32)
+  role           String             @default("user") @db.VarChar(32)
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   sessions       UserSession[]
@@ -78,10 +79,24 @@ model UserSession {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokens    RefreshToken[]
 
   @@index([userId])
   @@index([refreshTokenHash])
   @@map("user_sessions")
+}
+
+model RefreshToken {
+  id         String       @id @default(uuid()) @db.Char(36)
+  sessionId  String       @map("session_id") @db.Char(36)
+  tokenHash  String       @unique @map("token_hash") @db.VarChar(255)
+  usedAt     DateTime?    @map("used_at")
+  revokedAt  DateTime?    @map("revoked_at")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  session    UserSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, usedAt])
+  @@map("refresh_tokens")
 }
 
 model AuthHandoff {
