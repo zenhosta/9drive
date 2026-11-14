@@ -229,6 +229,7 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
           tokenExpiresAt: new Date(tokens.expiry_date ?? Date.now() + 3600_000),
           scopes: oauthState.providerConfig.scopes as string[],
           status: 'connected',
+          lastError: null,
         },
       })
       await prisma.oauthState.update({ where: { id: oauthState.id }, data: { usedAt: new Date(), userId: user.id } })
@@ -269,6 +270,7 @@ connectedAccountRouter.get('/google/callback', async (req, res, next) => {
         tokenExpiresAt: new Date(tokens.expiry_date ?? Date.now() + 3600_000),
         scopes: oauthState.providerConfig.scopes as string[],
         status: 'connected',
+        lastError: null,
       },
     })
     await prisma.oauthState.update({ where: { id: oauthState.id }, data: { usedAt: new Date() } })

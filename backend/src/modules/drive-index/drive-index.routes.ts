@@ -239,8 +239,26 @@ driveIndexRouter.post('/folders', async (req: AuthRequest, res, next) => {
 
 // ---- Changing what is in a folder: new folder, rename file, rename folder ----
 
-function opError(res: import('express').Response, error: unknown) {
+const RECONNECT_MESSAGE = 'Google sign-in for this drive has expired. Reconnect it in Settings.'
+
+/** Google refused the stored login (revoked, password changed, or a 7-day token from an OAuth app in Testing mode). */
+function isAuthError(error: unknown) {
+  const e = error as { message?: string; response?: { data?: { error?: string } } }
+  return /invalid_grant|invalid_rapt|Token has been expired or revoked/i.test(`${e?.message ?? ''} ${e?.response?.data?.error ?? ''}`)
+}
+
+/** Marks the drive so Overview shows "needs reconnect" (cleared by the next successful quota sync). */
+async function flagReconnect(accountId: string) {
+  await prisma.connectedAccount.update({ where: { id: accountId }, data: { lastError: 'invalid_grant: reconnect required' } }).catch(() => undefined)
+}
+
+function opError(res: import('express').Response, error: unknown, accountId?: string) {
   if (error instanceof PathError) return res.status(error.status).json({ code: error.code, message: error.message })
+  // Not 401: that would make the app think the user's own 9Drive session ended.
+  if (isAuthError(error)) {
+    if (accountId) void flagReconnect(accountId)
+    return res.status(409).json({ code: 'DRIVE_NEEDS_RECONNECT', message: RECONNECT_MESSAGE })
+  }
   const status = (error as { code?: number; status?: number })?.code ?? (error as { status?: number })?.status
   if (status === 403 || status === 404) return res.status(status).json({ code: status === 403 ? 'DRIVE_FORBIDDEN' : 'DRIVE_NOT_FOUND', message: status === 403 ? 'Google Drive did not allow this change.' : 'Google Drive could not find that item. Try Rescan.' })
   return null
@@ -265,16 +283,18 @@ driveIndexRouter.post('/browse/folder', async (req: AuthRequest, res, next) => {
     await createAuditLog(userId, 'CREATE_DRIVE_FOLDER', 'drive_folder', created.data.id, { accountId: body.accountId, path })
     return res.status(201).json({ folder: { name, path, accountId: body.accountId } })
   } catch (error) {
-    return opError(res, error) ?? next(error)
+    return opError(res, error, typeof req.body?.accountId === 'string' ? req.body.accountId : undefined) ?? next(error)
   }
 })
 
 driveIndexRouter.post('/:id/rename', async (req: AuthRequest, res, next) => {
+  let itemAccount: string | undefined
   try {
     const { name: raw } = z.object({ name: z.string().max(300) }).parse(req.body)
     const name = cleanName(raw)
     const userId = req.user!.id
     const item = await prisma.driveItem.findFirstOrThrow({ where: { id: String(req.params.id), userId } })
+    itemAccount = item.connectedAccountId
     if (isScanRunning(item.connectedAccountId)) return scanBusy(res)
     if (name === item.name) return res.json({ file: serialize(item) })
     const drive = await driveForAccount(userId, item.connectedAccountId)
@@ -285,7 +305,7 @@ driveIndexRouter.post('/:id/rename', async (req: AuthRequest, res, next) => {
     await createAuditLog(userId, 'RENAME_DRIVE_FILE', 'drive_item', item.id, { from: item.name, to: name })
     return res.json({ file: serialize(updated) })
   } catch (error) {
-    return opError(res, error) ?? next(error)
+    return opError(res, error, itemAccount) ?? next(error)
   }
 })
 
@@ -330,7 +350,8 @@ driveIndexRouter.post('/browse/rename-folder', async (req: AuthRequest, res, nex
         await prisma.folder.updateMany({ where: { userId, providerFolderId: folderId }, data: { name } })
         renamed.push(accountId)
       } catch (error) {
-        const known = error instanceof PathError ? error.message : (error as { code?: number })?.code === 403 ? 'Google Drive did not allow this change.' : null
+        if (isAuthError(error)) void flagReconnect(accountId)
+        const known = error instanceof PathError ? error.message : isAuthError(error) ? RECONNECT_MESSAGE : (error as { code?: number })?.code === 403 ? 'Google Drive did not allow this change.' : null
         if (!known) console.error('[rename-folder] failed', accountId, error instanceof Error ? error.message : error)
         failed.push({ accountId, message: known ?? 'Rename failed on this drive.' })
       }
