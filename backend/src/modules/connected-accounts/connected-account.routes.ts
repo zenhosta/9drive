@@ -63,7 +63,7 @@ connectedAccountRouter.get('/', requireAuth, async (req: AuthRequest, res, next)
 })
 
 async function createGoogleConnectUrl(req: AuthRequest) {
-  const query = z.object({ providerConfigId: z.string().min(1).optional() }).parse(req.query)
+  const query = z.object({ providerConfigId: z.string().min(1).optional(), loginHint: z.string().email().max(320).optional() }).parse(req.query)
   const config = query.providerConfigId
     ? await prisma.providerConfig.findFirstOrThrow({ where: { id: query.providerConfigId, OR: [{ userId: req.user!.id }, { userId: null }], provider: 'google_drive', status: 'active' } })
     : await prisma.providerConfig.findFirstOrThrow({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
@@ -76,6 +76,8 @@ async function createGoogleConnectUrl(req: AuthRequest) {
     include_granted_scopes: true,
     scope: config.scopes as string[],
     state,
+    // Reconnect: open Google's chooser on the drive being fixed.
+    ...(query.loginHint ? { login_hint: query.loginHint } : {}),
   })
 }
 

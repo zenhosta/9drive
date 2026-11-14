@@ -8,7 +8,12 @@ import { apiFetch, formatBytes, API_URL } from '@/lib/api'
 import { getGravatarUrl } from '@/lib/gravatar'
 import { getStoredUser, getAccessToken, clearAuthSession } from '@/lib/auth'
 
-type ConnectedAccount = { id: string; provider: string; email: string; displayName?: string | null; status: string; storageAccount?: { totalBytes: string | null; usedBytes: string; availableBytes: string | null; lastSyncedAt: string | null } | null }
+type ConnectedAccount = { id: string; provider: string; email: string; displayName?: string | null; status: string; lastError?: string | null; storageAccount?: { totalBytes: string | null; usedBytes: string; availableBytes: string | null; lastSyncedAt: string | null } | null }
+
+/** Google refused this drive's saved login; the status column still says "connected". */
+function needsReconnect(account: ConnectedAccount) {
+  return account.provider === 'google_drive' && /invalid_grant|revoked|expired/i.test(account.lastError ?? '')
+}
 
 function providerLabel(provider: string) {
   if (provider === 's3') return 'S3 Storage'
@@ -283,7 +288,7 @@ export function SettingsPage() {
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
-  async function connectDrive() {
+  async function connectDrive(loginHint?: string) {
     setConnecting(true)
     setMessage('')
     const popup = window.open('', 'google-drive-connect', 'width=540,height=720')
@@ -291,7 +296,7 @@ export function SettingsPage() {
       popup.document.write('<html><head><title>Connecting...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;color:#64748b;}</style></head><body><div style="text-align:center;"><h2>Connecting to Google...</h2><p>Please wait while we redirect you.</p></div></body></html>')
     }
     try {
-      const data = await apiFetch<{ url: string }>('/connected-accounts/google/connect-url')
+      const data = await apiFetch<{ url: string }>(`/connected-accounts/google/connect-url${loginHint ? `?loginHint=${encodeURIComponent(loginHint)}` : ''}`)
       if (popup) {
         popup.location.href = data.url
       } else {
@@ -353,7 +358,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Setting" description="Manage account and connected storage." actions={<><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button><Button size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Connecting...' : 'Connect Drive'}</Button></>} />
+      <PageHeader title="Setting" description="Manage account and connected storage." actions={<><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button><Button size="sm" onClick={() => connectDrive()} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Connecting...' : 'Connect Drive'}</Button></>} />
       {message ? <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
         <div className="grid gap-4">
@@ -381,7 +386,7 @@ export function SettingsPage() {
                 <div className="flex items-center gap-2.5"><Cloud className="h-5 w-5 text-blue-600" /><h2 className="text-[16px] font-bold">Google Drive</h2></div>
                 <p className="mt-1 text-[13px] text-slate-500">Connect one or more Google Drive accounts. 9Drive will route uploads to account with enough space.</p>
               </div>
-              <Button className="w-full sm:w-32" size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Opening...' : 'Connect Drive'}</Button>
+              <Button className="w-full sm:w-32" size="sm" onClick={() => connectDrive()} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Opening...' : 'Connect Drive'}</Button>
             </div>
           </Card>
 
@@ -399,11 +404,12 @@ export function SettingsPage() {
             <h2 className="text-[16px] font-bold">Connected Storage Accounts</h2>
             <div className="mt-3.5 grid gap-3">
               {accounts.length === 0 ? <p className="text-xs text-slate-500">No connected storage account yet.</p> : <>
-                <label className="grid gap-1.5 text-xs font-semibold text-slate-500">Choose Account<select className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none" value={selectedAccount?.id ?? ''} onChange={(event) => setSelectedAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{providerLabel(account.provider)} - {account.displayName || account.email} ({account.status})</option>)}</select></label>
+                {accounts.some(needsReconnect) ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs t-bad dark:border-red-900 dark:bg-red-950/40">{accounts.filter(needsReconnect).length} of {accounts.length} drives need to be reconnected because Google sign-in expired: {accounts.filter(needsReconnect).map((a) => a.email).join(', ')}. Choose each one below and press Reconnect, then sign in with that same Google account.</p> : null}
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500">Choose Account<select className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none" value={selectedAccount?.id ?? ''} onChange={(event) => setSelectedAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{providerLabel(account.provider)} - {account.displayName || account.email} ({needsReconnect(account) ? 'needs reconnect' : account.status})</option>)}</select></label>
                 {selectedAccount ? <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0"><p className="break-all font-semibold text-sm">{selectedAccount.displayName || selectedAccount.email}</p><p className="text-xs text-slate-500 mt-0.5">{providerLabel(selectedAccount.provider)} · {selectedAccount.status}</p></div>
-                    <div className="grid grid-cols-2 gap-2 sm:flex"><Button className="w-full" size="sm" variant="outline" onClick={() => sync(selectedAccount.id)} disabled={syncingAccountId === selectedAccount.id}><RefreshCw className={syncingAccountId === selectedAccount.id ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{syncingAccountId === selectedAccount.id ? 'Syncing...' : 'Sync'}</Button><Button className="w-full" size="sm" variant="danger" onClick={() => setAccountToDisconnect(selectedAccount)}><Trash2 className="h-4 w-4" />Disconnect</Button></div>
+                    <div className="min-w-0"><p className="break-all font-semibold text-sm">{selectedAccount.displayName || selectedAccount.email}</p><p className="text-xs text-slate-500 mt-0.5">{providerLabel(selectedAccount.provider)} · {needsReconnect(selectedAccount) ? <span className="t-bad font-semibold">Google sign-in expired</span> : selectedAccount.status}</p></div>
+                    <div className="grid grid-cols-2 gap-2 sm:flex">{needsReconnect(selectedAccount) ? <Button className="col-span-2 w-full" size="sm" onClick={() => connectDrive(selectedAccount.email)} disabled={connecting}><RefreshCw className="h-4 w-4" />Reconnect</Button> : null}<Button className="w-full" size="sm" variant="outline" onClick={() => sync(selectedAccount.id)} disabled={syncingAccountId === selectedAccount.id}><RefreshCw className={syncingAccountId === selectedAccount.id ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{syncingAccountId === selectedAccount.id ? 'Syncing...' : 'Sync'}</Button><Button className="w-full" size="sm" variant="danger" onClick={() => setAccountToDisconnect(selectedAccount)}><Trash2 className="h-4 w-4" />Disconnect</Button></div>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
                     <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{formatBytes(selectedAccount.storageAccount?.usedBytes)}</p><p className="mt-0.5 text-[10px] text-slate-500">Used</p></div>
