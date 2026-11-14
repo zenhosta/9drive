@@ -142,10 +142,9 @@ export function SettingsPage() {
   }
 
   useEffect(() => {
-    if (!isPollingLog) return
-
     let intervalId: any
     let active = true
+    let reconnects = 0
 
     async function fetchLog() {
       try {
@@ -154,6 +153,7 @@ export function SettingsPage() {
 
         setUpdateLog(data.log)
         setReconnectCount(0)
+        reconnects = 0
 
         if (data.log.includes('=== System Update Completed:')) {
           setUpdateFinished(true)
@@ -164,15 +164,51 @@ export function SettingsPage() {
       } catch (err) {
         if (!active) return
         setReconnectCount((prev) => prev + 1)
+        reconnects++
       }
     }
 
+    // Initial fetch
     fetchLog()
-    intervalId = setInterval(fetchLog, 2000)
+
+    // Poll every 15 seconds for auto-update check
+    intervalId = setInterval(fetchLog, 15000)
 
     return () => {
       active = false
       clearInterval(intervalId)
+    }
+  }, [isPollingLog])
+
+  useEffect(() => {
+    // Auto-check for updates on mount and periodically
+    let active = true
+
+    async function checkForUpdates() {
+      if (!active) return
+      try {
+        const data = await apiFetch<{ log: string }>('/system/update-log')
+        if (data.log && data.log.includes('=== System Update Completed:')) {
+          // Update was completed, show success
+          setUpdateFinished(true)
+          setUpdateSuccess(true)
+          setIsPollingLog(true)
+          setUpdateModalTitle('System Updated')
+        } else if (data.log && data.log.includes('Initiating update')) {
+          // Update in progress
+          setIsPollingLog(true)
+          setUpdateModalTitle('System Updating')
+        }
+      } catch (err) {
+        // Ignore errors, will retry on next poll
+      }
+      if (active) setTimeout(checkForUpdates, 30000)
+    }
+
+    checkForUpdates()
+
+    return () => {
+      active = false
     }
   }, [isPollingLog])
 
@@ -541,7 +577,7 @@ export function SettingsPage() {
                   <Database className="h-5 w-5 text-blue-600" />
                   <h2 className="text-[16px] font-bold">Backup & Restore Database</h2>
                 </div>
-                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">SQLite Local Database</span>
+                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">MySQL Remote Database</span>
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">

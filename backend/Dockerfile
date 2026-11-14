@@ -2,6 +2,9 @@ FROM node:20-alpine AS base
 
 WORKDIR /app
 
+# mysqldump/mysql back the /system/backup and /system/restore endpoints.
+RUN apk add --no-cache mysql-client
+
 COPY package*.json ./
 COPY prisma ./prisma
 

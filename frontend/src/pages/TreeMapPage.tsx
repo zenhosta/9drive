@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Cloud, Folder, FolderTree, Gauge, Workflow } from 'lucide-react'
+import { Cloud, Folder, FolderTree, FileArchive, FileImage, FilePlay, Gauge, Workflow } from 'lucide-react'
 import { apiFetch, formatBytes } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 type BackendFolder = { id: string; name: string; parentId?: string | null; updatedAt: string }
-type BackendFile = { id: string; name: string; sizeBytes: string; folderId?: string | null }
+type BackendFile = { id: string; name: string; sizeBytes: string; mimeType: string; folderId?: string | null }
+
+const fileKind = (mimeType: string) => {
+  if (mimeType.startsWith('image/')) return 'image'
+  if (mimeType.startsWith('video/')) return 'video'
+  if (mimeType === 'application/pdf') return 'pdf'
+  return 'other'
+}
 
 const edgeColors = ['#a78bfa', '#22d3ee', '#f472b6', '#34d399']
 
@@ -39,6 +46,16 @@ export function TreeMapPage() {
   const roots = useMemo(() => folders.filter((folder) => !folder.parentId).slice(0, 4), [folders])
   const totalBytes = useMemo(() => files.reduce((sum, file) => sum + Number(file.sizeBytes || 0), 0), [files])
   const nestedCount = folders.filter((folder) => folder.parentId).length
+
+  // Compute type breakdown
+  const typeCounts = useMemo(() => {
+    const counts = { image: 0, video: 0, pdf: 0, other: 0 }
+    files.forEach((file) => {
+      const kind = fileKind(file.mimeType)
+      counts[kind] = (counts[kind] || 0) + 1
+    })
+    return counts
+  }, [files])
 
   const nodes = roots.map((folder, index) => {
     const y = roots.length === 1 ? 50 : 18 + (64 / Math.max(1, roots.length - 1)) * index
@@ -144,11 +161,41 @@ export function TreeMapPage() {
           <p className="mt-3 text-2xl font-bold text-cyan-300">{formatBytes(totalBytes)}</p>
           <p className="text-[11px] text-[var(--text-secondary)]">{files.length} files mapped</p>
         </div>
+      </div>      {/* Type breakdown dashboard */}
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="glass-card p-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15">
+            <FileImage className="h-4 w-4" />
+          </span>
+          <p className="mt-3 text-2xl font-bold text-white">{typeCounts.image ?? 0}</p>
+          <p className="text-[11px] text-[var(--text-secondary)]">Image</p>
+        </div>
+        <div className="glass-card p-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/15">
+            <FilePlay className="h-4 w-4" />
+          </span>
+          <p className="mt-3 text-2xl font-bold text-white">{typeCounts.video ?? 0}</p>
+          <p className="text-[11px] text-[var(--text-secondary)]">Video</p>
+        </div>
+        <div className="glass-card p-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/15">
+            <FileArchive className="h-4 w-4" />
+          </span>
+          <p className="mt-3 text-2xl font-bold text-white">{typeCounts.pdf ?? 0}</p>
+          <p className="text-[11px] text-[var(--text-secondary)]">PDF</p>
+        </div>
+        <div className="glass-card p-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-500/15">
+            <Folder className="h-4 w-4" />
+          </span>
+          <p className="mt-3 text-2xl font-bold text-white">{typeCounts.other ?? 0}</p>
+          <p className="text-[11px] text-[var(--text-secondary)]">Other</p>
+        </div>
       </div>
 
-      <p className={cn('mt-4 text-center text-[11px] text-[var(--text-secondary)]')}>
-        Tap any node to open that folder in Files.
+      <p className={cn('mt-4 text-center text-[11px] text-[var(--text-secondary)]')}>        Tap any node to open that folder in Files.
       </p>
     </div>
   )
 }
+

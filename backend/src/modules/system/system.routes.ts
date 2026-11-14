@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { exec, spawn } from 'child_process'
+import { exec, spawn, execSync } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 import { requireAuth } from '../../middleware/auth.middleware.js'
@@ -9,7 +9,6 @@ import { decryptText, encryptText } from '../../utils/crypto.js'
 import Busboy from 'busboy'
 
 export const systemRouter = Router()
-
 
 systemRouter.post('/update', requireAuth, requireAdmin, (req, res, next) => {
   const projectRoot = path.resolve(process.cwd(), '..')
@@ -150,7 +149,7 @@ systemRouter.post('/google-config', requireAuth, requireAdmin, async (req, res, 
     const scopes = [
       'https://www.googleapis.com/auth/drive',
       'https://www.googleapis.com/auth/userinfo.email',
-      'https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/userinfo.profile'
     ]
 
     // Disable old global active config
@@ -201,17 +200,20 @@ systemRouter.post('/google-config', requireAuth, requireAdmin, async (req, res, 
   }
 })
 
-systemRouter.get('/backup', requireAuth, requireAdmin, (req, res, next) => {
+systemRouter.get('/backup', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const dbPath = getDatabaseFilePath()
-    if (!fs.existsSync(dbPath)) {
-      return res.status(404).json({ code: 'NOT_FOUND', message: 'Database file not found.' })
-    }
-    res.setHeader('Content-Disposition', 'attachment; filename=9drive-backup.db')
-    res.setHeader('Content-Type', 'application/octet-stream')
-    const fileStream = fs.createReadStream(dbPath)
-    fileStream.pipe(res)
-  } catch (error) {
+    // Use mysqldump to export the MySQL database
+    const { execSync } = await import('child_process')
+    const dump = execSync('mysqldump -u root -p${MYSQL_ROOT_PASSWORD} --routines --triggers 9drive', {
+      shell: '/bin/bash',
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024 * 100 // 100MB max
+    })
+
+    res.setHeader('Content-Disposition', 'attachment; filename=9drive-backup.sql')
+    res.setHeader('Content-Type', 'application/sql')
+    res.send(dump)
+  } catch (error: any) {
     return next(error)
   }
 })
@@ -228,19 +230,19 @@ systemRouter.post('/restore', requireAuth, requireAdmin, (req, res, next) => {
 
     busboy.on('file', (name, fileStream, info) => {
       fileReceived = true
-      const dbPath = getDatabaseFilePath()
-      const tempDbPath = dbPath + '.tmp'
-      const writeStream = fs.createWriteStream(tempDbPath)
+      const tempSqlPath = '/tmp/9drive-restore.sql'
+      const writeStream = fs.createWriteStream(tempSqlPath)
 
       fileStream.pipe(writeStream)
 
       writeStream.on('finish', async () => {
         try {
-          // Disconnect prisma client first to release database lock
-          await prisma.$disconnect()
-
-          // Replace old database file with restored database file
-          fs.renameSync(tempDbPath, dbPath)
+          // Execute the SQL dump against the MySQL database
+          execSync('mysql -u root -p${MYSQL_ROOT_PASSWORD} 9drive < /tmp/9drive-restore.sql', {
+            shell: '/bin/bash',
+            encoding: 'utf8',
+            maxBuffer: 1024 * 1024 * 100
+          })
 
           res.json({
             status: 'success',
@@ -254,8 +256,8 @@ systemRouter.post('/restore', requireAuth, requireAdmin, (req, res, next) => {
           }, 2000)
 
         } catch (err: any) {
-          if (fs.existsSync(tempDbPath)) {
-            try { fs.unlinkSync(tempDbPath) } catch {}
+          if (fs.existsSync(tempSqlPath)) {
+            try { fs.unlinkSync(tempSqlPath) } catch {}
           }
           console.error('Failed to restore database:', err)
           return res.status(500).json({
@@ -267,13 +269,13 @@ systemRouter.post('/restore', requireAuth, requireAdmin, (req, res, next) => {
       })
 
       writeStream.on('error', (err) => {
-        if (fs.existsSync(tempDbPath)) {
-          try { fs.unlinkSync(tempDbPath) } catch {}
+        if (fs.existsSync(tempSqlPath)) {
+          try { fs.unlinkSync(tempSqlPath) } catch {}
         }
-        console.error('Write error on temp DB:', err)
+        console.error('Write error on temp SQL:', err)
         return res.status(500).json({
           code: 'WRITE_ERROR',
-          message: 'Failed to write temporary database file.',
+          message: 'Failed to write temporary SQL file.',
           error: err.message
         })
       })
@@ -318,4 +320,4 @@ function getDatabaseFilePath(): string {
   }
 
   return cleanPath
-}
+}
