@@ -1,0 +1,1 @@
+ALTER TABLE `oauth_states` ADD COLUMN `mobile` BOOLEAN NOT NULL DEFAULT false;

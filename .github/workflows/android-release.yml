@@ -1,0 +1,155 @@
+name: Android release
+
+# Releases are automatic: every push to main builds the APK and publishes a
+# GitHub Release with the next patch version (v1.0.0, v1.0.1, ...). Pushing a
+# tag uses that tag's version instead, and manual dispatch is still available
+# for rebuilds and for baking a default server URL into the APK.
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: Version name for the APK (defaults to the tag, or the auto-incremented version)
+        required: false
+      api_url:
+        description: Optional default 9Drive server URL baked into the APK
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VITE_API_URL: ${{ inputs.api_url }}
+      VITE_RECAPTCHA_SITE_KEY: ${{ vars.RECAPTCHA_SITE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # The ubuntu-latest image ships the Android SDK; setup-android@v3 is
+      # currently broken there (it tries to install the removed `tools`
+      # package), so install the platform components directly.
+      - name: Install Android platform
+        run: |-
+          set -euo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="${ANDROID_HOME:?ANDROID_HOME is not set}/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+
+      # Version resolution, in priority order:
+      #   1. the version_name input from a manual run
+      #   2. the pushed tag (v1.2.3 -> 1.2.3)
+      #   3. the highest existing v* tag with its patch bumped, else 1.0.0
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version_name }}
+        run: |-
+          set -euo pipefail
+          version="${INPUT_VERSION:-}"
+          if [ -z "$version" ] && [[ "$GITHUB_REF_NAME" == v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if [ -z "$version" ]; then
+            latest="$(git ls-remote --tags --refs origin 'v*' \
+              | sed 's|.*refs/tags/v||' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V | tail -1 || true)"
+            if [ -z "$latest" ]; then
+              version="1.0.0"
+            else
+              major="${latest%%.*}"
+              rest="${latest#*.}"
+              minor="${rest%%.*}"
+              patch="${rest##*.}"
+              version="$major.$minor.$((patch + 1))"
+            fi
+            echo "::notice::Auto version $version (previous: ${latest:-none})"
+          fi
+          echo "name=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "APP_VERSION_NAME=$version" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build web app
+        working-directory: frontend
+        run: npm run build
+
+      - name: Sync Capacitor project
+        working-directory: frontend
+        run: npx cap sync android
+
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |-
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No keystore secret set; the release APK is debug-signed."
+          fi
+
+      - name: Build release APK
+        working-directory: frontend/android
+        run: |-
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Name artifact
+        run: |-
+          mkdir -p artifacts
+          cp frontend/android/app/build/outputs/apk/release/app-release.apk "artifacts/9drive-${{ steps.version.outputs.name }}.apk"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: 9drive-android-${{ steps.version.outputs.name }}
+          path: artifacts/9drive-*.apk
+          if-no-files-found: error
+
+      # Runs on every trigger, so a merge to main is enough to publish. The
+      # action creates the tag when it does not exist yet, which also makes the
+      # next auto version increment from it.
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: 9Drive ${{ steps.version.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          files: artifacts/9drive-*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true

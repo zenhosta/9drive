@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy — 9Drive</title>
+<meta name="description" content="How the self-hosted 9Drive file manager handles your account data and Google user data.">
+<link rel="icon" href="logo.png">
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0f172a; background: #f8fafc; line-height: 1.7; }
+  header { display: flex; align-items: center; gap: .75rem; padding: 1.1rem 1.5rem; border-bottom: 1px solid #e2e8f0; background: #fff; }
+  header img { width: 36px; height: 36px; border-radius: 9px; }
+  header strong { font-size: 1.15rem; }
+  nav { margin-left: auto; display: flex; gap: 1.25rem; font-size: .9rem; }
+  nav a { color: #475569; text-decoration: none; font-weight: 600; }
+  nav a:hover { color: #2563eb; }
+  main { max-width: 780px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+  h1 { font-size: clamp(1.7rem, 3.5vw, 2.2rem); letter-spacing: -.02em; margin: 0 0 .35rem; }
+  h2 { font-size: 1.1rem; margin: 2.2rem 0 .5rem; letter-spacing: -.01em; }
+  p, li { color: #334155; }
+  .meta { color: #64748b; font-size: .88rem; margin: 0 0 1.5rem; }
+  table { width: 100%; border-collapse: collapse; margin: .75rem 0 0; font-size: .92rem; background: #fff; border: 1px solid #e2e8f0; border-radius: .75rem; overflow: hidden; }
+  th, td { text-align: left; padding: .65rem .8rem; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  th { background: #f1f5f9; font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; color: #475569; }
+  tr:last-child td { border-bottom: 0; }
+  code { background: #eef2ff; color: #3730a3; padding: .1rem .3rem; border-radius: .3rem; font-size: .88em; }
+  .callout { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: .75rem; padding: .9rem 1.1rem; margin: 1.25rem 0; }
+  a { color: #2563eb; }
+  footer { border-top: 1px solid #e2e8f0; padding: 1.5rem; text-align: center; font-size: .85rem; color: #64748b; background: #fff; }
+  footer a { color: #475569; }
+</style>
+</head>
+<body>
+<header>
+  <img src="logo.png" alt="9Drive logo">
+  <strong>9Drive</strong>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="terms.html">Terms</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Privacy policy</h1>
+  <p class="meta">Last updated: 13 November 2026</p>
+
+  <p>
+    9Drive is self-hosted, open-source file management software (Apache License 2.0). This policy
+    describes the 9Drive instance operated by the project maintainer, and explains what the server
+    stores, what it accesses from Google, and how you stay in control. It is written to satisfy the
+    <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services
+    User Data Policy</a> for the Google Drive integration.
+  </p>
+
+  <h2>1. What the server stores</h2>
+  <ul>
+    <li>Your email address and a salted password hash — never your password itself.</li>
+    <li>Session and refresh tokens that keep you signed in.</li>
+    <li>Google OAuth access and refresh tokens, encrypted at rest with AES-256-GCM using a key held only by the operator.</li>
+    <li>File and folder metadata: name, size, MIME type, checksum, the Drive file identifier, and timestamps.</li>
+    <li>An audit log of actions you perform in the app (uploads, downloads, deletes, sign-ins).</li>
+  </ul>
+  <p>
+    <strong>File contents are not stored on the 9Drive server.</strong> Files are written to the storage
+    account you connect — normally your own Google Drive — and the server only proxies them while you
+    use the app.
+  </p>
+
+  <h2>2. Google user data 9Drive accesses</h2>
+  <p>When you connect a Google account, 9Drive requests only these scopes:</p>
+  <table>
+    <thead>
+      <tr><th>Scope</th><th>Why it is required</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>auth/drive</code></td>
+        <td>Create, read, update, move and delete the files and folders you manage through 9Drive, and read your storage quota.</td>
+      </tr>
+      <tr>
+        <td><code>auth/userinfo.email</code></td>
+        <td>Show which Google account is connected and tie it to your 9Drive login.</td>
+      </tr>
+      <tr>
+        <td><code>auth/userinfo.profile</code></td>
+        <td>Display your name and avatar inside the app.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>9Drive does not request access to Gmail, Calendar, Contacts, or any other Google service.</p>
+
+  <h2>3. How Google user data is used</h2>
+  <p>
+    Information obtained from Google APIs is used solely to provide the features you explicitly
+    trigger in the app: listing, uploading, downloading, previewing, renaming, moving, sharing and
+    deleting files, and reporting storage usage.
+  </p>
+  <p>
+    9Drive does not sell Google user data, does not use it for advertising, does not use it to build
+    user profiles, and does not use it to develop, improve or train generalised machine-learning
+    models. It is not transferred to third parties except the infrastructure required to run the
+    server (section 5).
+  </p>
+
+  <div class="callout">
+    <strong>Limited Use disclosure.</strong> 9Drive's use and transfer to any other app of information
+    received from Google APIs will adhere to the
+    <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services
+    User Data Policy</a>, including the Limited Use requirements.
+  </div>
+
+  <h2>4. Your control over the data</h2>
+  <p>You connect a Google account by granting OAuth consent, and you can withdraw it at any time:</p>
+  <ul>
+    <li>Revoke 9Drive's access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+    <li>Disconnect the account inside 9Drive (<strong>Settings → Connected accounts</strong>), which deletes the stored tokens.</li>
+    <li>Delete your 9Drive account, which removes your account record, stored tokens and file metadata.</li>
+  </ul>
+  <p>
+    Revoking access stops all further Drive operations immediately. Files already in your Google Drive
+    remain yours and are unaffected.
+  </p>
+
+  <h2>5. Where data lives and who can see it</h2>
+  <p>
+    The server runs on infrastructure chosen by the instance operator. OAuth tokens are encrypted at
+    rest; traffic between the app and the server is protected by HTTPS. Data is not shared with third
+    parties, except where the operator relies on a hosting provider to run the server, or where
+    disclosure is required by law.
+  </p>
+
+  <h2>6. Retention</h2>
+  <p>
+    Account data, tokens and file metadata are kept until you delete them or delete your account.
+    Deleted files move to the app's Trash and are removed permanently when you empty it. Operational
+    server logs are retained briefly for security and troubleshooting.
+  </p>
+
+  <h2>7. Children</h2>
+  <p>9Drive is not directed at children under 13, and the operator does not knowingly collect their data.</p>
+
+  <h2>8. Changes to this policy</h2>
+  <p>Material changes will be published on this page together with a new "last updated" date.</p>
+
+  <h2>9. Contact</h2>
+  <p>
+    Questions, access requests or deletion requests:
+    <a href="https://github.com/Sathyamoorthy143/9drive-testing/issues">open an issue</a>.
+  </p>
+</main>
+
+<footer>
+  9Drive is open source under the Apache License 2.0 ·
+  <a href="index.html">Home</a> ·
+  <a href="terms.html">Terms of service</a>
+</footer>
+</body>
+</html>

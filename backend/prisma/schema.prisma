@@ -122,6 +122,7 @@ model OauthState {
   userId           String?        @map("user_id") @db.Char(36)
   providerConfigId String         @map("provider_config_id") @db.Char(36)
   flow             String         @default("connect") @db.VarChar(32)
+  mobile           Boolean        @default(false)
   stateHash        String         @unique @map("state_hash") @db.VarChar(255)
   expiresAt        DateTime       @map("expires_at")
   usedAt           DateTime?      @map("used_at")

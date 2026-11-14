@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import { google } from 'googleapis'
 import { z } from 'zod'
 import { prisma } from '../../config/prisma.js'
@@ -7,14 +8,39 @@ import { requireAuth, type AuthRequest } from '../../middleware/auth.middleware.
 import { hashPassword, verifyPassword } from '../../utils/password.js'
 import { encryptText, hashToken, randomToken } from '../../utils/crypto.js'
 import { signAccessToken } from '../../utils/jwt.js'
+import { frontendRedirect } from '../../utils/redirect.js'
+import { requireGoogleProviderConfig } from '../../utils/google-config.js'
 import { createOAuthClient, syncGoogleQuota } from '../google/google.service.js'
 
 export const authRouter = Router()
 
-const registerSchema = z.object({ name: z.string().min(2), email: z.string().email(), password: z.string().min(8), captchaToken: z.string().optional() })
-const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) })
-const refreshSchema = z.object({ refreshToken: z.string().min(1) })
-const googleExchangeSchema = z.object({ token: z.string().min(1) })
+const emailSchema = z.string().trim().toLowerCase().email().max(191)
+const registerSchema = z.object({ name: z.string().trim().min(2).max(191), email: emailSchema, password: z.string().min(8).max(128), captchaToken: z.string().max(4096).optional() })
+const loginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(128) })
+const refreshSchema = z.object({ refreshToken: z.string().min(1).max(512) })
+const googleExchangeSchema = z.object({ token: z.string().min(1).max(512) })
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  message: { code: 'RATE_LIMITED', message: 'Too many authentication requests. Please try again later.' },
+})
+
+// Failed password and handoff attempts are limited per IP to slow brute force.
+const credentialLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  validate: { trustProxy: false },
+  message: { code: 'RATE_LIMITED', message: 'Too many failed attempts. Please try again later.' },
+})
+
+authRouter.use(authLimiter)
 
 async function createSession(userId: string, req: AuthRequest) {
   const refreshToken = randomToken()
@@ -40,7 +66,7 @@ async function verifyCaptcha(token: string | undefined) {
   return Boolean(data.success)
 }
 
-authRouter.post('/register', async (req, res, next) => {
+authRouter.post('/register', credentialLimiter, async (req, res, next) => {
   try {
     const body = registerSchema.parse(req.body)
     if (!(await verifyCaptcha(body.captchaToken))) return res.status(400).json({ code: 'CAPTCHA_FAILED', message: 'Captcha verification failed.' })
@@ -54,7 +80,7 @@ authRouter.post('/register', async (req, res, next) => {
   }
 })
 
-authRouter.post('/login', async (req, res, next) => {
+authRouter.post('/login', credentialLimiter, async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body)
     const user = await prisma.user.findUnique({ where: { email: body.email } })
@@ -66,11 +92,14 @@ authRouter.post('/login', async (req, res, next) => {
   }
 })
 
-authRouter.get('/google/url', async (_req, res, next) => {
+authRouter.get('/google/url', credentialLimiter, async (req, res, next) => {
   try {
-    const config = await prisma.providerConfig.findFirstOrThrow({ where: { userId: null, provider: 'google_drive', status: 'active' }, orderBy: { createdAt: 'desc' } })
+    const query = z.object({ platform: z.enum(['mobile']).optional() }).parse(req.query)
+    const config = await requireGoogleProviderConfig({
+      message: 'Google sign-in is unavailable: this server has no Google OAuth credentials yet. Sign in with your email and password instead.',
+    })
     const state = randomToken()
-    await prisma.oauthState.create({ data: { providerConfigId: config.id, flow: 'login', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
+    await prisma.oauthState.create({ data: { providerConfigId: config.id, flow: 'login', mobile: query.platform === 'mobile', stateHash: hashToken(state), expiresAt: new Date(Date.now() + 10 * 60_000) } })
     const client = createOAuthClient(config)
     const url = client.generateAuthUrl({
       access_type: 'offline',
@@ -89,19 +118,20 @@ authRouter.get('/google/callback', async (req, res) => {
   try {
     const query = z.object({ code: z.string(), state: z.string() }).parse(req.query)
     const oauthState = await prisma.oauthState.findUniqueOrThrow({ where: { stateHash: hashToken(query.state) }, include: { providerConfig: true } })
-    if (oauthState.flow !== 'login' || oauthState.usedAt || oauthState.expiresAt < new Date()) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    const mobile = oauthState.mobile
+    if (oauthState.flow !== 'login' || oauthState.usedAt || oauthState.expiresAt < new Date()) return res.redirect(frontendRedirect('/google-auth?status=error', mobile))
 
     const client = createOAuthClient(oauthState.providerConfig)
     const tokenResult = await client.getToken(query.code)
     const tokens = tokenResult.tokens
-    if (!tokens.access_token) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    if (!tokens.access_token) return res.redirect(frontendRedirect('/google-auth?status=error', mobile))
     client.setCredentials(tokens)
 
     const oauth2 = google.oauth2({ version: 'v2', auth: client })
     const profile = await oauth2.userinfo.get()
     const providerAccountId = profile.data.id
     const email = profile.data.email
-    if (!providerAccountId || !email) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    if (!providerAccountId || !email) return res.redirect(frontendRedirect('/google-auth?status=error', mobile))
 
     const name = profile.data.name || email.split('@')[0] || 'Google User'
     const user = await prisma.user.upsert({
@@ -111,7 +141,7 @@ authRouter.get('/google/callback', async (req, res) => {
     })
     const existingAccount = await prisma.connectedAccount.findUnique({ where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } } })
     const refreshTokenEncrypted = tokens.refresh_token ? encryptText(tokens.refresh_token) : existingAccount?.refreshTokenEncrypted
-    if (!refreshTokenEncrypted) return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
+    if (!refreshTokenEncrypted) return res.redirect(frontendRedirect('/google-auth?status=error', mobile))
 
     const account = await prisma.connectedAccount.upsert({
       where: { userId_provider_providerAccountId: { userId: user.id, provider: 'google_drive', providerAccountId } },
@@ -147,14 +177,14 @@ authRouter.get('/google/callback', async (req, res) => {
 
     const handoffToken = randomToken()
     await prisma.authHandoff.create({ data: { userId: user.id, tokenHash: hashToken(handoffToken), expiresAt: new Date(Date.now() + 5 * 60_000) } })
-    return res.redirect(`${env.FRONTEND_URL}/google-auth?token=${handoffToken}`)
+    return res.redirect(frontendRedirect(`/google-auth?token=${handoffToken}`, mobile))
   } catch (error) {
     console.error('Google Auth callback failed:', error)
     return res.redirect(`${env.FRONTEND_URL}/google-auth?status=error`)
   }
 })
 
-authRouter.post('/google/exchange', async (req, res, next) => {
+authRouter.post('/google/exchange', credentialLimiter, async (req, res, next) => {
   try {
     const body = googleExchangeSchema.parse(req.body)
     const handoff = await prisma.authHandoff.findFirst({ where: { tokenHash: hashToken(body.token), usedAt: null, expiresAt: { gt: new Date() } }, include: { user: true } })

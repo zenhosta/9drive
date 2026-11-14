@@ -1,10 +1,9 @@
 import { clearAuthSession, getAccessToken, getRefreshToken, setAccessToken } from '@/lib/auth'
+import { getConfiguredApiUrl } from '@/lib/server'
 
 const isProd = import.meta.env.PROD
-const rawApiUrl = import.meta.env.VITE_API_URL
-export const API_URL = (rawApiUrl && rawApiUrl !== 'http://localhost:4000')
-  ? rawApiUrl
-  : (isProd ? '/api' : 'http://localhost:4000')
+const configuredApiUrl = getConfiguredApiUrl()
+export const API_URL = configuredApiUrl ?? (isProd ? '/api' : 'http://localhost:4000')
 
 
 type ApiOptions = RequestInit & { skipAuth?: boolean; retry?: boolean }

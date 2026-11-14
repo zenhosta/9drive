@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9Drive — self-hosted file manager for your own cloud</title>
+<meta name="description" content="9Drive is self-hosted software that puts a fast, modern file manager in front of your own Google Drive or S3 storage.">
+<link rel="canonical" href="https://sathyamoorthy143.github.io/9drive-testing/">
+<link rel="icon" href="logo.png">
+<meta property="og:title" content="9Drive — self-hosted file manager">
+<meta property="og:image" content="https://sathyamoorthy143.github.io/9drive-testing/logo-1024.png">
+<!-- Google Search Console ownership verification. Paste the token from
+     Search Console -> HTML tag here, then commit so Pages redeploys: -->
+<!-- <meta name="google-site-verification" content="PASTE_TOKEN_HERE"> -->
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0f172a; background: #f8fafc; line-height: 1.65; }
+  header { display: flex; align-items: center; gap: .75rem; padding: 1.1rem 1.5rem; border-bottom: 1px solid #e2e8f0; background: #fff; }
+  header img { width: 36px; height: 36px; border-radius: 9px; }
+  header strong { font-size: 1.15rem; letter-spacing: -.01em; }
+  nav { margin-left: auto; display: flex; gap: 1.25rem; font-size: .9rem; }
+  nav a { color: #475569; text-decoration: none; font-weight: 600; }
+  nav a:hover { color: #2563eb; }
+  main { max-width: 860px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+  h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.15; letter-spacing: -.025em; margin: 0 0 .75rem; }
+  .lede { font-size: 1.1rem; color: #475569; max-width: 62ch; }
+  .cta { display: inline-block; margin-top: 1.5rem; background: #2563eb; color: #fff; text-decoration: none; font-weight: 700; padding: .8rem 1.4rem; border-radius: .75rem; }
+  .shot { margin: 2.5rem 0 0; border-radius: 1rem; overflow: hidden; border: 1px solid #e2e8f0; background: #fff; }
+  .shot img { display: block; width: 100%; height: auto; }
+  main h2 { font-size: 1.15rem; margin: 2.3rem 0 .5rem; letter-spacing: -.01em; }
+  main p { margin: 0 0 .9rem; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin-top: 2.5rem; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.15rem 1.25rem; }
+  .card h2 { font-size: 1rem; margin: 0 0 .35rem; }
+  .card p { margin: 0; color: #475569; font-size: .92rem; }
+  footer { border-top: 1px solid #e2e8f0; padding: 1.5rem; text-align: center; font-size: .85rem; color: #64748b; background: #fff; }
+  footer a { color: #475569; }
+</style>
+</head>
+<body>
+<header>
+  <img src="logo.png" alt="9Drive logo">
+  <strong>9Drive</strong>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="privacy.html">Privacy</a>
+    <a href="terms.html">Terms</a>
+  </nav>
+</header>
+
+<main>
+  <h1>9Drive — a fast, modern file manager for storage you already own.</h1>
+  <p class="lede">
+    9Drive is self-hosted software that puts a clean web and Android interface in front of
+    your own Google Drive or S3 bucket. Upload, organise, share and restore your files
+    without handing them to yet another cloud provider.
+  </p>
+  <a class="cta" href="https://github.com/Sathyamoorthy143/9drive-testing">Get 9Drive on GitHub</a>
+
+  <h2>What 9Drive is</h2>
+  <p>
+    <strong>9Drive</strong> is a self-hosted file manager, available as a web app and an Android app.
+    It lets you upload, browse, organise, search, preview, share, download and delete files, and
+    restore them from a Trash view. It is not a public cloud service: the software is installed on a
+    server you control, and it works on storage you already own — your Google Drive account or an S3
+    bucket. This page describes the application before you sign in; the app itself is only reachable
+    after you create an account on a 9Drive server.
+  </p>
+
+  <h2>Why 9Drive connects to Google Drive</h2>
+  <p>
+    If you choose to connect a Google account, 9Drive asks for Google Drive access so it can read and
+    write the files you manage inside the app: listing folders, uploading, downloading, previewing,
+    renaming, moving, sharing and deleting files, and showing how much storage you have used. 9Drive
+    also reads your email address, name and avatar to display which account is connected. It does not
+    request Gmail, Calendar, Contacts or any other Google service, does not sell this data, and does
+    not use it for advertising. You can disconnect the account inside the app at any time. See the
+    <a href="privacy.html">privacy policy</a> for the full details.
+  </p>
+
+  <figure class="shot">
+    <img src="screenshots/all-files.webp" alt="9Drive file browser showing a grid of files and folders">
+  </figure>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Your storage, your rules</h2>
+      <p>Files live in your Google Drive or S3 account. 9Drive stores metadata and proxies transfers — nothing else.</p>
+    </div>
+    <div class="card">
+      <h2>Folders, search and trash</h2>
+      <p>Nested folders, grid and list views, fast search, soft-delete with a Trash view, and starred files.</p>
+    </div>
+    <div class="card">
+      <h2>Sharing and API keys</h2>
+      <p>Create public links deliberately, and issue scoped API keys for scripted uploads.</p>
+    </div>
+    <div class="card">
+      <h2>Android app</h2>
+      <p>A Capacitor build of the same interface, so your server is one tap away on your phone.</p>
+    </div>
+  </div>
+</main>
+
+<footer>
+  9Drive is open source under the Apache License 2.0 ·
+  <a href="privacy.html">Privacy policy</a> ·
+  <a href="terms.html">Terms of service</a> ·
+  <a href="https://github.com/Sathyamoorthy143/9drive-testing/issues">Support</a>
+</footer>
+</body>
+</html>

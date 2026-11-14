@@ -19,7 +19,18 @@ import { systemRouter } from './modules/system/system.routes.js'
 export const app = express()
 app.set('trust proxy', true)
 
-app.use(cors({ origin: env.FRONTEND_URL }))
+const allowedOrigins = new Set([env.FRONTEND_URL])
+if (env.MOBILE_APP_REDIRECT_URL) {
+  // Capacitor serves the bundled web app from these origins.
+  allowedOrigins.add('https://localhost')
+  allowedOrigins.add('capacitor://localhost')
+}
+
+app.use(cors({
+  origin(origin, callback) {
+    callback(null, !origin || allowedOrigins.has(origin))
+  },
+}))
 app.use(express.json({ limit: '1mb' }))
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }))

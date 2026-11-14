@@ -12,7 +12,7 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
     if (!header?.startsWith('Bearer ')) return res.status(401).json({ code: 'AUTH_REQUIRED', message: 'Bearer token required.' })
     const payload = verifyAccessToken(header.slice(7))
     const session = await prisma.userSession.findUnique({ where: { id: payload.sid } })
-    if (!session || session.revokedAt || session.expiresAt < new Date()) return res.status(401).json({ code: 'AUTH_SESSION_EXPIRED', message: 'Session expired.' })
+    if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt < new Date()) return res.status(401).json({ code: 'AUTH_SESSION_EXPIRED', message: 'Session expired.' })
     req.user = { id: payload.sub, sessionId: payload.sid }
     return next()
   } catch {

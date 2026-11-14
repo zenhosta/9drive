@@ -431,12 +431,60 @@ Vite bakes `VITE_API_URL` into the build. Rebuild the frontend, or with Docker r
 
 </details>
 
+## Android app
+
+The `frontend/android` project wraps the same React app with Capacitor, so the APK ships every feature of the web dashboard (files, folders, uploads, sharing, invites, quota, API keys, activity log) **plus the new permanent release features**:
+
+- **Auto-update**: The app checks `/system/update-log` every 15 seconds and auto-applies code updates from GitHub releases
+- **Fixed backup/restore**: Now uses `mysqldump`/`mysql` for MySQL databases instead of broken SQLite file DB operations
+- **Expanded Tree Map dashboard**: Fetches all Drive files in a tree format with type/count/color breakdown (docs, photos, videos, new arrivals) separated by color pattern
+
+**v1.0.7** — permanent release with all features built as a rule.
+
+On first launch the app asks for your server URL. Enter the address of your 9Drive instance — a direct backend URL (`https://drive-api.example.com`) and a reverse-proxied site URL (`https://9drive.example.com`) both work; the app picks the working API prefix automatically. You can change the server later from **Settings → Server**.
+
+Google sign-in and "Connect Drive" open in the system browser and return to the app through the `ninedrive://` deep link. Add this to the backend environment to enable that return:
+
+```env
+MOBILE_APP_REDIRECT_URL=ninedrive://app
+```
+
+With that variable set the backend also accepts requests from the Capacitor app origin (`https://localhost`).
+
+### Build the APK locally
+
+Requires Node 20+, JDK 21, and Android SDK 36:
+
+```bash
+cd frontend
+npm ci
+npm run build
+npx cap sync android
+cd android && ./gradlew assembleRelease
+```
+
+The APK is written to `frontend/android/app/build/outputs/apk/release/app-release.apk`.
+
+### Release builds in GitHub Actions
+
+`.github/workflows/android-release.yml` builds the APK and attaches it to a GitHub Release, automatically.
+
+- Every push to `main` publishes the next patch version (`v1.0.0`, then `v1.0.1`, `v1.0.2`, ...). Pushing a tag such as `v1.2.0` releases that exact version instead, and a manual **Android release** run can override the version and pass a default server URL.
+- Each run also keeps the APK as a workflow artifact next to the release.
+- Add these repository secrets to sign the release: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Without them the APK is debug-signed, which still installs for testing.
+- Optionally set the `RECAPTCHA_SITE_KEY` repository variable to enable captcha in the APK build.
+- **Triggers a new permanent release** with auto-update, fixed backup/restore, and the expanded Tree Map dashboard on every push to `main`
+
 ## Security
 
 - Uploads stream through the backend straight to Google Drive or S3. **Nothing is stored on the server's disk.**
 - Google tokens and S3 credentials are encrypted in MySQL. App refresh tokens, API keys, preview tokens, and auth-handoff tokens are stored only as hashes.
-- CORS only allows `FRONTEND_URL`.
+- Authentication is rate limited, and passwords are hashed with Argon2id.
+- CORS only allows `FRONTEND_URL` (plus the Capacitor origins when the Android deep link is enabled).
+- `update`, `backup`, `restore` and the global Google OAuth configuration are restricted to the operators listed in `ADMIN_EMAILS`.
 - Never commit `.env` files or share `TOKEN_ENCRYPTION_KEY`, `JWT_ACCESS_SECRET`, `RECAPTCHA_SECRET_KEY`, OAuth client secrets, or raw share links you want to keep private.
+
+See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for the full audit, what was fixed, and the remaining hardening work.
 
 ## Project structure
 
