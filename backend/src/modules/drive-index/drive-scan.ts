@@ -88,6 +88,8 @@ export async function startScans(userId: string, accountIds?: string[]) {
 
 async function scanAccount(accountId: string, userId: string) {
   const scanId = crypto.randomUUID()
+  // Rows written by uploads, new folders or renames while this scan runs are newer than it; cleanup keeps them.
+  const startedAt = new Date()
   await prisma.driveScan.upsert({
     where: { connectedAccountId: accountId },
     create: { connectedAccountId: accountId, status: 'running', scanId, itemsFound: 0, startedAt: new Date() },
@@ -105,6 +107,12 @@ async function scanAccount(accountId: string, userId: string) {
       for (const f of res.data.files ?? []) if (f.id) folders.set(f.id, { name: f.name ?? '', parent: f.parents?.[0] ?? null })
       pageToken = res.data.nextPageToken ?? undefined
     } while (pageToken)
+
+    // Record the folders themselves too, so empty folders show in the browser and paths resolve to folder ids.
+    const folderRows = [...folders].map(([id, node]) => ({ id: crypto.randomUUID(), providerFolderId: id, name: node.name.slice(0, 255), path: `${buildPath(node.parent ?? undefined, folders, rootId)}/${node.name}`.slice(0, 1000) }))
+      .filter((r) => r.name && !r.path.includes('(shared folder)'))
+      .sort((a, b) => (a.providerFolderId < b.providerFolderId ? -1 : 1))
+    for (let i = 0; i < folderRows.length; i += CHUNK) await retryOnLock(() => upsertFolderRows(userId, accountId, scanId, folderRows.slice(i, i + CHUNK)))
 
     let found = 0
     pageToken = undefined
@@ -127,7 +135,8 @@ async function scanAccount(accountId: string, userId: string) {
       pageToken = res.data.nextPageToken ?? undefined
     } while (pageToken)
 
-    const removed = await retryOnLock(() => prisma.driveItem.deleteMany({ where: { connectedAccountId: accountId, scanId: { not: scanId } } }))
+    const removed = await retryOnLock(() => prisma.driveItem.deleteMany({ where: { connectedAccountId: accountId, scanId: { not: scanId }, updatedAt: { lt: startedAt } } }))
+    await retryOnLock(() => prisma.driveFolder.deleteMany({ where: { connectedAccountId: accountId, scanId: { not: scanId }, updatedAt: { lt: startedAt } } }))
     await prisma.driveScan.update({ where: { connectedAccountId: accountId }, data: { status: 'done', itemsFound: found, finishedAt: new Date() } })
     console.info('[scan] done', { accountId, found, removed: removed.count })
   } catch (error) {
@@ -146,4 +155,15 @@ async function upsertRows(userId: string, accountId: string, scanId: string, row
     INSERT INTO drive_items (id, user_id, connected_account_id, provider_file_id, name, mime_type, size_bytes, md5, path, modified_at, scan_id, created_at, updated_at)
     VALUES ${Prisma.join(values)}
     ON DUPLICATE KEY UPDATE name = VALUES(name), mime_type = VALUES(mime_type), size_bytes = VALUES(size_bytes), md5 = VALUES(md5), path = VALUES(path), modified_at = VALUES(modified_at), scan_id = VALUES(scan_id), updated_at = NOW(3)`
+}
+
+type FolderRow = { id: string; providerFolderId: string; name: string; path: string }
+
+async function upsertFolderRows(userId: string, accountId: string, scanId: string, rows: FolderRow[]) {
+  if (rows.length === 0) return
+  const values = rows.map((r) => Prisma.sql`(${r.id}, ${userId}, ${accountId}, ${r.providerFolderId}, ${r.name}, ${r.path}, ${scanId}, NOW(3), NOW(3))`)
+  await prisma.$executeRaw`
+    INSERT INTO drive_folders (id, user_id, connected_account_id, provider_folder_id, name, path, scan_id, created_at, updated_at)
+    VALUES ${Prisma.join(values)}
+    ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), scan_id = VALUES(scan_id), updated_at = NOW(3)`
 }

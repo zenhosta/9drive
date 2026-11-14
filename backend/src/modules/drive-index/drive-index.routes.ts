@@ -14,7 +14,8 @@ import { ThumbCache, thumbCache } from './thumb-cache.js'
 import { google } from 'googleapis'
 import { createDeleteJob, expandFolders, JobRequestError } from '../jobs/job.service.js'
 import { createAuditLog } from '../../utils/audit.js'
-import { isScanRunning, startScans } from './drive-scan.js'
+import { isScanRunning, retryOnLock, startScans } from './drive-scan.js'
+import { cleanName, cleanPath, ensurePath, findChildFolder, isAppFolder, parentOf, PathError, rememberFolder, resolvePath, rewritePaths, ROOT_PATH } from './drive-folders.js'
 
 export const driveIndexRouter = Router()
 // Short-lived, file-bound links so <img>, <video> and <iframe> can load a file without sending the login header.
@@ -175,6 +176,15 @@ driveIndexRouter.get('/browse', async (req: AuthRequest, res, next) => {
       FROM drive_items
       WHERE user_id = ${userId} ${account} AND path LIKE ${prefix}
       GROUP BY seg ORDER BY seg`
+    // Folders with no files inside only exist in drive_folders.
+    const emptyRows = await prisma.$queryRaw<Array<{ seg: string }>>`
+      SELECT SUBSTRING_INDEX(SUBSTRING(path, ${start}), '/', 1) AS seg
+      FROM drive_folders
+      WHERE user_id = ${userId} ${account} AND path LIKE ${prefix}
+      GROUP BY seg`
+    const folderMap = new Map(folderRows.filter((r) => r.seg).map((r) => [r.seg.toLowerCase(), { name: r.seg, path: `${path}/${r.seg}`, count: Number(r.c), sizeBytes: String(r.s ?? 0) }]))
+    for (const r of emptyRows) if (r.seg && !folderMap.has(r.seg.toLowerCase())) folderMap.set(r.seg.toLowerCase(), { name: r.seg, path: `${path}/${r.seg}`, count: 0, sizeBytes: '0' })
+    const folderList = [...folderMap.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
     const where: Prisma.DriveItemWhereInput = { userId, path, ...(q.accountId ? { connectedAccountId: q.accountId } : {}) }
     const field = q.sort === 'size' ? 'sizeBytes' : q.sort === 'date' ? 'modifiedAt' : 'name'
     const [total, items] = await Promise.all([
@@ -183,7 +193,7 @@ driveIndexRouter.get('/browse', async (req: AuthRequest, res, next) => {
     ])
     return res.json({
       path,
-      folders: folderRows.filter((r) => r.seg).map((r) => ({ name: r.seg, path: `${path}/${r.seg}`, count: Number(r.c), sizeBytes: String(r.s ?? 0) })),
+      folders: folderList,
       page: q.page,
       pageSize: q.pageSize,
       total,
@@ -224,6 +234,115 @@ driveIndexRouter.post('/folders', async (req: AuthRequest, res, next) => {
     return res.status(201).json({ folder: { id: folder.id, name: folder.name, path: resolved.path } })
   } catch (error) {
     return next(error)
+  }
+})
+
+// ---- Changing what is in a folder: new folder, rename file, rename folder ----
+
+function opError(res: import('express').Response, error: unknown) {
+  if (error instanceof PathError) return res.status(error.status).json({ code: error.code, message: error.message })
+  const status = (error as { code?: number; status?: number })?.code ?? (error as { status?: number })?.status
+  if (status === 403 || status === 404) return res.status(status).json({ code: status === 403 ? 'DRIVE_FORBIDDEN' : 'DRIVE_NOT_FOUND', message: status === 403 ? 'Google Drive did not allow this change.' : 'Google Drive could not find that item. Try Rescan.' })
+  return null
+}
+
+const scanBusy = (res: import('express').Response) => res.status(409).json({ code: 'SCAN_RUNNING', message: 'This drive is being scanned. Try again when the scan finishes.' })
+
+driveIndexRouter.post('/browse/folder', async (req: AuthRequest, res, next) => {
+  try {
+    const body = z.object({ accountId: z.string().min(1), path: z.string().max(1000).default(ROOT_PATH), name: z.string().max(300) }).parse(req.body)
+    const userId = req.user!.id
+    const parent = cleanPath(body.path)
+    const name = cleanName(body.name)
+    const path = `${parent}/${name}`
+    if (path.length > 1000) throw new PathError('That folder path is too long.')
+    const drive = await driveForAccount(userId, body.accountId)
+    const parentId = await ensurePath(drive, userId, body.accountId, parent)
+    if (await findChildFolder(drive, parentId, name)) return res.status(409).json({ code: 'FOLDER_EXISTS', message: `A folder named "${name}" is already here.` })
+    const created = await withBackoff(() => drive.files.create({ requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }, fields: 'id,name' }))
+    if (!created.data.id) throw new PathError('Google Drive did not create the folder.', 502, 'FOLDER_CREATE_FAILED')
+    await rememberFolder(userId, body.accountId, created.data.id, path)
+    await createAuditLog(userId, 'CREATE_DRIVE_FOLDER', 'drive_folder', created.data.id, { accountId: body.accountId, path })
+    return res.status(201).json({ folder: { name, path, accountId: body.accountId } })
+  } catch (error) {
+    return opError(res, error) ?? next(error)
+  }
+})
+
+driveIndexRouter.post('/:id/rename', async (req: AuthRequest, res, next) => {
+  try {
+    const { name: raw } = z.object({ name: z.string().max(300) }).parse(req.body)
+    const name = cleanName(raw)
+    const userId = req.user!.id
+    const item = await prisma.driveItem.findFirstOrThrow({ where: { id: String(req.params.id), userId } })
+    if (isScanRunning(item.connectedAccountId)) return scanBusy(res)
+    if (name === item.name) return res.json({ file: serialize(item) })
+    const drive = await driveForAccount(userId, item.connectedAccountId)
+    await withBackoff(() => drive.files.update({ fileId: item.providerFileId, requestBody: { name }, fields: 'id' }))
+    const updated = await retryOnLock(() => prisma.driveItem.update({ where: { id: item.id }, data: { name, modifiedAt: new Date() } }))
+    // Keep 9Drive's own record of the same Drive file in step (Uploads view, share links).
+    await prisma.file.updateMany({ where: { userId, connectedAccountId: item.connectedAccountId, providerFileId: item.providerFileId }, data: { name } })
+    await createAuditLog(userId, 'RENAME_DRIVE_FILE', 'drive_item', item.id, { from: item.name, to: name })
+    return res.json({ file: serialize(updated) })
+  } catch (error) {
+    return opError(res, error) ?? next(error)
+  }
+})
+
+driveIndexRouter.post('/browse/rename-folder', async (req: AuthRequest, res, next) => {
+  try {
+    const body = z.object({ accountId: z.string().min(1).optional(), path: z.string().max(1000), name: z.string().max(300) }).parse(req.body)
+    const userId = req.user!.id
+    const from = cleanPath(body.path)
+    const name = cleanName(body.name)
+    if (from === ROOT_PATH) throw new PathError('My Drive itself cannot be renamed.')
+    if (isAppFolder(from)) throw new PathError('The 9drive folder holds your 9Drive uploads, so it keeps its name.', 400, 'APP_FOLDER')
+    const to = `${parentOf(from)}/${name}`
+    if (to === from) return res.json({ path: to, renamed: [], failed: [] })
+    if (to.length > 1000) throw new PathError('That folder path is too long.')
+
+    // In the merged "All drives" view the folder is that path on every drive that has it.
+    let accountIds: string[]
+    if (body.accountId) accountIds = [body.accountId]
+    else {
+      const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT DISTINCT connected_account_id AS id FROM drive_items WHERE user_id = ${userId} AND (path COLLATE utf8mb4_bin = ${from} OR path COLLATE utf8mb4_bin LIKE ${`${likeEscape(from)}/%`})
+        UNION SELECT DISTINCT connected_account_id AS id FROM drive_folders WHERE user_id = ${userId} AND path COLLATE utf8mb4_bin = ${from}`
+      accountIds = rows.map((r) => r.id)
+    }
+    if (accountIds.length === 0) return res.status(404).json({ code: 'FOLDER_NOT_FOUND', message: 'That folder was not found. Try Rescan.' })
+    if (accountIds.some(isScanRunning)) return scanBusy(res)
+
+    const renamed: string[] = []
+    const failed: Array<{ accountId: string; message: string }> = []
+    for (const accountId of accountIds) {
+      try {
+        const drive = await driveForAccount(userId, accountId)
+        const folderId = await resolvePath(drive, userId, accountId, from)
+        if (!folderId || folderId === 'root') throw new PathError('Folder not found on this drive. Try Rescan.', 404, 'FOLDER_NOT_FOUND')
+        const parentId = await resolvePath(drive, userId, accountId, parentOf(from))
+        const clash = parentId ? await findChildFolder(drive, parentId, name) : null
+        if (clash && clash !== folderId) throw new PathError(`A folder named "${name}" is already next to it.`, 409, 'FOLDER_EXISTS')
+        await withBackoff(() => drive.files.update({ fileId: folderId, requestBody: { name }, fields: 'id' }))
+        await rewritePaths(accountId, from, to)
+        await rememberFolder(userId, accountId, folderId, to)
+        // A 9Drive virtual folder can be backed by this Drive folder; keep its name in step.
+        await prisma.folder.updateMany({ where: { userId, providerFolderId: folderId }, data: { name } })
+        renamed.push(accountId)
+      } catch (error) {
+        const known = error instanceof PathError ? error.message : (error as { code?: number })?.code === 403 ? 'Google Drive did not allow this change.' : null
+        if (!known) console.error('[rename-folder] failed', accountId, error instanceof Error ? error.message : error)
+        failed.push({ accountId, message: known ?? 'Rename failed on this drive.' })
+      }
+    }
+    await createAuditLog(userId, 'RENAME_DRIVE_FOLDER', 'drive_folder', undefined, { from, to, renamed: renamed.length, failed: failed.length })
+    if (renamed.length === 0) {
+      const conflict = failed.find((f) => f.message.includes('already'))
+      return res.status(conflict ? 409 : 502).json({ code: conflict ? 'FOLDER_EXISTS' : 'RENAME_FAILED', message: failed[0]?.message ?? 'Rename failed.', failed })
+    }
+    return res.json({ path: to, renamed, failed })
+  } catch (error) {
+    return opError(res, error) ?? next(error)
   }
 })
 

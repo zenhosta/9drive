@@ -32,6 +32,7 @@ model User {
   apiKeys       ApiKey[]
   moveJobs      MoveJob[]
   driveItems    DriveItem[]
+  driveFolders  DriveFolder[]
 
   @@map("users")
 }
@@ -160,6 +161,7 @@ model ConnectedAccount {
   uploadSessions        UploadSession[]
   s3StorageConfig       S3StorageConfig?
   driveItems            DriveItem[]
+  driveFolders          DriveFolder[]
   driveScan             DriveScan?
 
   @@unique([userId, provider, providerAccountId])
@@ -311,6 +313,8 @@ model UploadSession {
   sizeBytes                BigInt            @map("size_bytes")
   status                   String            @db.VarChar(32)
   googleSessionUri         String?           @map("google_session_uri") @db.Text
+  // Set for uploads into a real Drive folder from the drive browser ("My Drive/a/b"); null for 9Drive uploads.
+  drivePath                String?           @map("drive_path") @db.VarChar(1024)
   errorMessage             String?           @map("error_message") @db.Text
   createdAt                DateTime          @default(now()) @map("created_at")
   completedAt              DateTime?         @map("completed_at")
@@ -434,6 +438,26 @@ model DriveItem {
   @@index([connectedAccountId, sizeBytes])
   @@index([connectedAccountId, scanId])
   @@map("drive_items")
+}
+
+/// Real Google Drive folders, so empty folders show in the browser and a browser path can be turned into a folder id.
+model DriveFolder {
+  id                 String           @id @default(uuid()) @db.Char(36)
+  userId             String           @map("user_id") @db.Char(36)
+  connectedAccountId String           @map("connected_account_id") @db.Char(36)
+  providerFolderId   String           @map("provider_folder_id") @db.VarChar(191)
+  name               String           @db.VarChar(255)
+  path               String           @db.VarChar(1024)
+  scanId             String           @map("scan_id") @db.Char(36)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connectedAccount   ConnectedAccount @relation(fields: [connectedAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([connectedAccountId, providerFolderId])
+  @@index([userId])
+  @@index([connectedAccountId, scanId])
+  @@map("drive_folders")
 }
 
 model DriveScan {

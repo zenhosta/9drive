@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowRightLeft, CheckSquare, Eye, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, CheckSquare, Eye, ChevronLeft, ChevronRight, Copy, Download, ExternalLink, Folder, FolderOpen, FolderPlus, FolderUp, Pencil, RefreshCw, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DeleteFilesDialog } from '@/components/drive/DeleteFilesDialog'
 import { canPreview, FileViewer } from '@/components/drive/FileViewer'
 import { MoveToDriveDialog, type MovableFile } from '@/components/drive/MoveToDriveDialog'
+import { NameDialog } from '@/components/drive/NameDialog'
 import { badgeTone, downloadIndexedFile, driveName, googleDriveLink, RowMenu, Thumb, ViewToggle, type IndexedRow, type MenuAction } from '@/components/drive/drive-bits'
 import { useJobs } from '@/context/JobsContext'
 import { useToast } from '@/context/ToastContext'
+import { useUpload } from '@/context/UploadContext'
 import { apiFetch, formatBytes, formatDate } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -19,9 +21,11 @@ type ScanAccount = { accountId: string; email: string; status: 'never' | 'idle' 
 type Summary = { drives: Array<{ accountId: string; count: number; sizeBytes: string }> }
 type Selection = { key: string; kind: 'file' | 'folder'; file?: IndexedRow; folder?: FolderEntry; accountId: string }
 type View = 'list' | 'grid'
+type NameTask = { mode: 'new' } | { mode: 'rename-file'; file: IndexedRow } | { mode: 'rename-folder'; folder: FolderEntry }
 
 const ROOT = 'My Drive'
 const viewKey = '9drive:drive-browser-view'
+const APP_FOLDER = 'My Drive/9drive'
 
 /**
  * The drive file browser. Without `driveId` it is "All Files": every drive merged, with drive chips that open a drive.
@@ -55,6 +59,10 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [viewing, setViewing] = useState<number | null>(null)
   const [selectingAll, setSelectingAll] = useState(false)
+  const [nameTask, setNameTask] = useState<NameTask | null>(null)
+  const { uploadFiles } = useUpload()
+  const fileInput = useRef<HTMLInputElement>(null)
+  const folderInput = useRef<HTMLInputElement>(null)
   const requestId = useRef(0)
   const autoScanned = useRef(false)
   const wasScanning = useRef(false)
@@ -99,6 +107,14 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
   useEffect(() => { loadScan(); loadSummary() }, [loadScan, loadSummary])
   useEffect(() => { load() }, [load, finishedVersion])
   useEffect(() => { setSelected(new Map()) }, [path, accountId, q])
+  // Uploads finish in the background (progress panel); show the new files when they land.
+  useEffect(() => {
+    const onDone = () => { load(); loadSummary() }
+    window.addEventListener('9drive:upload-completed', onDone)
+    return () => window.removeEventListener('9drive:upload-completed', onDone)
+  }, [load, loadSummary])
+  // React has no typed prop for folder picking.
+  useEffect(() => { folderInput.current?.setAttribute('webkitdirectory', '') }, [])
 
   // First visit: nothing has been scanned yet, so read the drives automatically.
   useEffect(() => {
@@ -247,6 +263,8 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
   }
   const rowActions = (sel: Selection): MenuAction[] => [
     ...(sel.kind === 'file' && canPreview(sel.file!) ? [{ label: 'Preview', icon: Eye, onClick: () => openViewer(sel.file!) }] : []),
+    ...(sel.kind === 'file' ? [{ label: 'Rename…', icon: Pencil, onClick: () => setNameTask({ mode: 'rename-file', file: sel.file! }) }]
+      : canRenameFolder(sel.folder!) ? [{ label: 'Rename…', icon: Pencil, onClick: () => setNameTask({ mode: 'rename-folder', folder: sel.folder! }) }] : []),
     { label: 'Move to drive…', icon: ArrowRightLeft, onClick: () => actOn(sel, 'move') },
     { label: 'Copy to drive…', icon: Copy, onClick: () => actOn(sel, 'copy') },
     ...(sel.kind === 'file' ? [
@@ -255,6 +273,46 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
     ] : []),
     { label: 'Delete…', icon: Trash2, danger: true, onClick: () => actOn(sel, 'delete') },
   ]
+  /** Changes (new folder, upload, rename) only work inside My Drive, not in search results or folders shared with you. */
+  const canChange = !q && !path.includes('(shared folder)')
+  function canRenameFolder(f: FolderEntry) { return !f.path.includes('(shared folder)') && f.path.toLowerCase() !== APP_FOLDER.toLowerCase() }
+
+  async function submitName(name: string, chosenDrive?: string) {
+    if (!nameTask) return
+    setBusy(true)
+    try {
+      if (nameTask.mode === 'new') {
+        await apiFetch('/drive-index/browse/folder', { method: 'POST', body: JSON.stringify({ accountId: accountId || chosenDrive, path, name }) })
+        toast.success(`Folder "${name}" created.`)
+      } else if (nameTask.mode === 'rename-file') {
+        await apiFetch(`/drive-index/${nameTask.file.id}/rename`, { method: 'POST', body: JSON.stringify({ name }) })
+        toast.success(`Renamed to "${name}".`)
+      } else {
+        const r = await apiFetch<{ renamed: string[]; failed: Array<{ accountId: string; message: string }> }>('/drive-index/browse/rename-folder', {
+          method: 'POST', body: JSON.stringify({ accountId: accountId || undefined, path: nameTask.folder.path, name }),
+        })
+        if (r.failed.length > 0) {
+          const who = (id: string) => driveName(scan.find((s) => s.accountId === id) ?? { email: id })
+          toast.error(`Renamed on ${r.renamed.length} drive${r.renamed.length === 1 ? '' : 's'}, failed on ${r.failed.map((f) => `${who(f.accountId)} (${f.message})`).join(', ')}.`)
+        } else toast.success(`Folder renamed to "${name}".`)
+      }
+      setNameTask(null)
+      await load()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'That change failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function pickUpload(list: FileList | null, input: HTMLInputElement | null) {
+    const picked = list ? [...list] : []
+    if (input) input.value = ''
+    if (picked.length === 0) return
+    uploadFiles(picked, null, accountId || null, { drivePath: path }).catch((e) => toast.error(e instanceof Error ? e.message : 'Upload failed'))
+    toast.info(`Uploading ${picked.length.toLocaleString()} file${picked.length === 1 ? '' : 's'} to ${path.replace(/^My Drive\/?/, '') || rootLabel}. Progress is shown in the upload panel.`)
+  }
+
   const fileSel = (f: IndexedRow): Selection => ({ key: `f:${f.id}`, kind: 'file', file: f, accountId: f.connectedAccountId })
   const folderSel = (f: FolderEntry): Selection => ({ key: `d:${f.path}`, kind: 'folder', folder: f, accountId })
 
@@ -281,6 +339,13 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
             </select>
           </label>
           <Button variant="outline" size="sm" onClick={() => setParam({ order: order === 'asc' ? 'desc' : null })}>{order === 'asc' ? 'Ascending' : 'Descending'}</Button>
+          {canChange ? <>
+            <Button variant="outline" size="sm" onClick={() => setNameTask({ mode: 'new' })} disabled={scan.length === 0}><FolderPlus className="h-4 w-4" />New folder</Button>
+            <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()} disabled={scan.length === 0} title={accountId ? 'Upload files into this folder' : 'Upload files into this folder on the drive with the most room'}><Upload className="h-4 w-4" />Upload</Button>
+            <Button variant="outline" size="sm" onClick={() => folderInput.current?.click()} disabled={scan.length === 0} title="Upload a whole folder, keeping its subfolders, to one drive"><FolderUp className="h-4 w-4" />Upload folder</Button>
+            <input ref={fileInput} type="file" multiple hidden onChange={(e) => pickUpload(e.target.files, e.target)} />
+            <input ref={folderInput} type="file" multiple hidden onChange={(e) => pickUpload(e.target.files, e.target)} />
+          </> : null}
           <ViewToggle view={view} onChange={changeView} />
           <Button variant="outline" size="sm" onClick={() => (everythingSelected ? setSelected(new Map()) : selectAllInView())} disabled={selectingAll || (files.length === 0 && folders.length === 0)}><CheckSquare className="h-4 w-4" />{selectingAll ? 'Selecting...' : everythingSelected ? 'Clear selection' : `Select all${totalFilesInView > files.length ? ` ${totalFilesInView.toLocaleString()}` : ''}`}</Button>
           <Button variant="outline" size="sm" onClick={rescan} disabled={scanning}><RefreshCw className={cn('h-4 w-4', scanning && 'animate-spin')} />{scanning ? 'Scanning...' : 'Rescan'}</Button>
@@ -402,6 +467,20 @@ export function DriveFilesBrowser({ driveId }: { driveId?: string }) {
       ) : null}
 
       {viewing !== null ? <FileViewer files={previewable} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} /> : null}
+      <NameDialog
+        open={nameTask !== null}
+        title={nameTask?.mode === 'new' ? 'New folder' : nameTask?.mode === 'rename-file' ? 'Rename file' : 'Rename folder'}
+        description={nameTask?.mode === 'new'
+          ? `In ${path.replace(/^My Drive\/?/, '') || rootLabel}${accountId ? '' : '. Choose which drive it is created on.'}`
+          : nameTask?.mode === 'rename-folder' && !accountId ? 'Renames this folder on every drive that has it.' : 'The new name is saved in Google Drive.'}
+        label={nameTask?.mode === 'new' ? 'Folder name' : 'New name'}
+        initial={nameTask?.mode === 'rename-file' ? nameTask.file.name : nameTask?.mode === 'rename-folder' ? nameTask.folder.name : ''}
+        submitLabel={nameTask?.mode === 'new' ? 'Create' : 'Rename'}
+        drives={nameTask?.mode === 'new' && !accountId ? scan.map((s) => ({ accountId: s.accountId, label: s.email })) : undefined}
+        busy={busy}
+        onClose={() => setNameTask(null)}
+        onSubmit={submitName}
+      />
       <DeleteFilesDialog open={deleteOpen} fileCount={deleteFileCount} folderCount={selectedFolders.length} bytes={selectedBytes} busy={busy} onClose={() => setDeleteOpen(false)} onConfirm={confirmDelete} />
       <MoveToDriveDialog
         open={dialog !== null}

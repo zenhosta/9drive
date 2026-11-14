@@ -11,6 +11,7 @@ import { ensureGoogleAppFolder, getAuthedGoogleClient, syncGoogleQuota } from '.
 import { buildS3ObjectKey, getS3ConfigForAccount, syncS3Quota, uploadS3Object } from '../s3/s3.service.js'
 import { createAuditLog } from '../../utils/audit.js'
 import { indexTrackedFile } from '../drive-index/drive-scan.js'
+import { cleanName, cleanPath, ensurePath, PathError } from '../drive-index/drive-folders.js'
 
 export const uploadRouter = Router()
 
@@ -44,7 +45,7 @@ function byPriority<T extends { account: { id: string; createdAt: Date } }>(item
   })
 }
 
-async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByAccount = new Map<string, bigint>(), targetAccountId?: string | null) {
+async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByAccount = new Map<string, bigint>(), targetAccountId?: string | null, googleOnly = false) {
   const accounts = await prisma.connectedAccount.findMany({
     where: { userId, provider: { in: ['google_drive', 's3'] }, status: 'connected', ...(targetAccountId ? { id: targetAccountId } : {}) },
     include: { storageAccount: true },
@@ -75,6 +76,7 @@ async function selectAccount(userId: string, sizeBytes: bigint, reservedBytesByA
   const eligible = fresh
     .map((account) => ({ account, availableBytes: account.storageAccount?.availableBytes === null || account.storageAccount?.availableBytes === undefined ? null : account.storageAccount.availableBytes - (reservedBytesByAccount.get(account.id) ?? 0n) }))
     .filter(({ availableBytes }) => availableBytes === null || availableBytes >= sizeBytes)
+    .filter(({ account }) => !googleOnly || account.provider === 'google_drive')
 
   if (eligible.length === 0) return null
 
@@ -315,12 +317,18 @@ uploadRouter.post('/resumable/init', requireAuth, async (req: AuthRequest, res, 
       mimeType: z.string().min(1),
       sizeBytes: z.string(),
       folderId: z.string().nullable().optional(),
-      targetAccountId: z.string().nullable().optional()
+      targetAccountId: z.string().nullable().optional(),
+      // Upload into a real Drive folder from the drive browser, e.g. "My Drive/Photos/Trip".
+      drivePath: z.string().max(1000).nullable().optional(),
+      // Total size of a folder upload, so the whole folder is routed to one drive that can hold it.
+      groupBytes: z.string().regex(/^\d+$/).nullable().optional(),
     }).parse(req.body)
 
     const sizeBytes = BigInt(body.sizeBytes)
     if (sizeBytes <= 0n) return res.status(400).json({ code: 'UPLOAD_SIZE_REQUIRED', message: 'Valid sizeBytes required.' })
     if (sizeBytes > BigInt(env.MAX_UPLOAD_BYTES)) return res.status(400).json({ code: 'UPLOAD_TOO_LARGE', message: 'File exceeds max upload size.' })
+
+    if (body.drivePath) return await initDrivePathUpload(req, res, { ...body, drivePath: body.drivePath, sizeBytes })
 
     const folderId = body.folderId || null
     let targetAccountId = body.targetAccountId
@@ -402,6 +410,37 @@ uploadRouter.post('/resumable/init', requireAuth, async (req: AuthRequest, res, 
     return next(error)
   }
 })
+
+async function initDrivePathUpload(req: AuthRequest, res: Response, body: { fileName: string; mimeType: string; sizeBytes: bigint; drivePath: string; targetAccountId?: string | null; groupBytes?: string | null }) {
+  try {
+    const drivePath = cleanPath(body.drivePath)
+    const fileName = cleanName(body.fileName)
+    const needed = body.groupBytes && BigInt(body.groupBytes) > body.sizeBytes ? BigInt(body.groupBytes) : body.sizeBytes
+    const account = await selectAccount(req.user!.id, needed, undefined, body.targetAccountId, true)
+    if (!account) return res.status(400).json({ code: 'NO_ACCOUNT_WITH_ENOUGH_SPACE', message: body.targetAccountId ? 'That drive does not have enough free space.' : 'No connected Google Drive has enough free space.' })
+
+    const auth = await getAuthedGoogleClient(account)
+    const drive = google.drive({ version: 'v3', auth })
+    const parentId = await ensurePath(drive, req.user!.id, account.id, drivePath)
+    const token = await auth.getAccessToken()
+    const initRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token.token}`, 'Content-Type': 'application/json', 'X-Upload-Content-Type': body.mimeType, 'X-Upload-Content-Length': body.sizeBytes.toString() },
+      body: JSON.stringify({ name: fileName, parents: [parentId] }),
+    })
+    if (!initRes.ok) throw new Error(`Google API Init Error: ${initRes.status}`)
+    const sessionUri = initRes.headers.get('location')
+    if (!sessionUri) throw new Error('Google API did not return Location header.')
+
+    const session = await prisma.uploadSession.create({
+      data: { userId: req.user!.id, targetConnectedAccountId: account.id, fileName, mimeType: body.mimeType, sizeBytes: body.sizeBytes, status: 'uploading', googleSessionUri: sessionUri, drivePath },
+    })
+    return res.status(201).json({ sessionId: session.id, provider: 'google_drive', offset: 0, accountId: account.id })
+  } catch (error) {
+    if (error instanceof PathError) return res.status(error.status).json({ code: error.code, message: error.message })
+    throw error
+  }
+}
 
 // 2. Query/Resume resumable status
 uploadRouter.get('/resumable/status/:id', requireAuth, async (req: AuthRequest, res, next) => {
@@ -503,6 +542,16 @@ uploadRouter.put('/resumable/chunk/:id', requireAuth, async (req: AuthRequest, r
     if (putRes.ok) {
       // Completed! Parse metadata
       const fileMeta = await putRes.json() as { id: string; name: string; mimeType: string }
+
+      if (session.drivePath) {
+        // A drive-browser upload: it lives in the user's own folder, so it is indexed but not made public and not
+        // added to 9Drive's tracked uploads (those live in the 9drive folder).
+        await prisma.uploadSession.update({ where: { id: session.id }, data: { status: 'completed', completedAt: new Date() } })
+        await indexTrackedFile({ userId: req.user!.id, connectedAccountId: account.id, providerFileId: fileMeta.id, name: fileMeta.name || session.fileName, mimeType: fileMeta.mimeType || session.mimeType, sizeBytes: totalBytes }, session.drivePath).catch(() => undefined)
+        await createAuditLog(req.user!.id, 'UPLOAD_DRIVE_FILE', 'drive_item', fileMeta.id, { name: fileMeta.name || session.fileName, path: session.drivePath, size: totalBytes.toString() })
+        syncQuotaInBackground(account.id, session.id)
+        return res.status(201).json({ status: 'completed', file: { providerFileId: fileMeta.id, name: fileMeta.name || session.fileName, path: session.drivePath } })
+      }
 
       // Make the file public (anyone with link can edit/download)
       try {
