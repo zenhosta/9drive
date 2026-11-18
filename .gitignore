@@ -5,6 +5,9 @@ dist/
 
 # Secrets
 .env
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
 backend/.env
 backend/.env.local
 backend/.env.*.local
