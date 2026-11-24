@@ -9,6 +9,7 @@ import { StorageBalancer } from '@/components/drive/StorageBalancer'
 import { apiFetch, formatBytes, API_URL } from '@/lib/api'
 import { getGravatarUrl } from '@/lib/gravatar'
 import { getStoredUser, getAccessToken, clearAuthSession } from '@/lib/auth'
+import { useTranslation } from '@/lib/i18nContext'
 
 type ConnectedAccount = { id: string; provider: string; email: string; displayName?: string | null; status: string; storageAccount?: { totalBytes: string | null; usedBytes: string; availableBytes: string | null; lastSyncedAt: string | null } | null }
 
@@ -29,6 +30,7 @@ function availableLabel(account: ConnectedAccount) {
 
 export function SettingsPage() {
   const user = getStoredUser()
+  const { lang, setLang, t } = useTranslation()
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([])
   const [message, setMessage] = useState('')
   const [connecting, setConnecting] = useState(false)
@@ -356,20 +358,44 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Setting" description="Manage account and connected storage." actions={<><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button><Button size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Connecting...' : 'Connect Drive'}</Button></>} />
+      <PageHeader title={t('settings')} description={t('manageAccount')} actions={<><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />{t('connectS3')}</Button><Button size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? t('syncing') : t('connectDrive')}</Button></>} />
       {message ? <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
       
       <div className="mt-4 border-b border-slate-200 dark:border-slate-700">
         <nav className="flex gap-1 px-1" role="tablist">
-          <button role="tab" aria-selected={activeTab === 'accounts'} onClick={() => setActiveTab('accounts')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'accounts' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Settings className="h-4 w-4 inline-block mr-1" />Contas</button>
-          <button role="tab" aria-selected={activeTab === 'explorer'} onClick={() => setActiveTab('explorer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'explorer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Cloud className="h-4 w-4 inline-block mr-1" />Drive Explorer</button>
-          <button role="tab" aria-selected={activeTab === 'balancer'} onClick={() => setActiveTab('balancer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'balancer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Scale className="h-4 w-4 inline-block mr-1" />Balanceamento</button>
+          <button role="tab" aria-selected={activeTab === 'accounts'} onClick={() => setActiveTab('accounts')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'accounts' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Settings className="h-4 w-4 inline-block mr-1" />{t('accounts')}</button>
+          <button role="tab" aria-selected={activeTab === 'explorer'} onClick={() => setActiveTab('explorer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'explorer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Cloud className="h-4 w-4 inline-block mr-1" />{t('driveExplorer')}</button>
+          <button role="tab" aria-selected={activeTab === 'balancer'} onClick={() => setActiveTab('balancer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'balancer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Scale className="h-4 w-4 inline-block mr-1" />{t('balancer')}</button>
         </nav>
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
         {activeTab === 'accounts' && (
         <div className="grid gap-4">
+          <Card className="p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <Globe className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-[16px] font-bold">{t('language')}</h2>
+                </div>
+                <p className="mt-1 text-[13px] text-slate-500">{t('languageDesc')}</p>
+              </div>
+              <select
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none dark:border-slate-700 dark:bg-slate-800"
+                value={lang}
+                onChange={(e) => setLang(e.target.value as any)}
+              >
+                <option value="pt">Português (Brasil)</option>
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="fr">Français</option>
+                <option value="de">Deutsch</option>
+                <option value="ru">Русский</option>
+              </select>
+            </div>
+          </Card>
+
           <Card className="p-4">
             <div className="flex items-center gap-3.5">
               {!profileImageUrl || avatarError ? (
@@ -404,24 +430,24 @@ export function SettingsPage() {
                 <div className="flex items-center gap-2.5"><Database className="h-5 w-5 text-blue-600" /><h2 className="text-[16px] font-bold">S3 Compatible</h2></div>
                 <p className="mt-1 text-[13px] text-slate-500">Connect AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, or custom endpoint storage.</p>
               </div>
-              <Button className="w-full sm:w-32" size="sm" variant="outline" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button>
+              <Button className="w-full sm:w-32" size="sm" variant="outline" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />{t('connectS3')}</Button>
             </div>
           </Card>
 
           <Card className="p-4">
-            <h2 className="text-[16px] font-bold">Connected Storage Accounts</h2>
+            <h2 className="text-[16px] font-bold">{t('connectedStorage')}</h2>
             <div className="mt-3.5 grid gap-3">
               {accounts.length === 0 ? <p className="text-xs text-slate-500">No connected storage account yet.</p> : <>
-                <label className="grid gap-1.5 text-xs font-semibold text-slate-500">Choose Account<select className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none" value={selectedAccount?.id ?? ''} onChange={(event) => setSelectedAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{providerLabel(account.provider)} - {account.displayName || account.email} ({account.status})</option>)}</select></label>
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500">{t('chooseAccount')}<select className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none" value={selectedAccount?.id ?? ''} onChange={(event) => setSelectedAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{providerLabel(account.provider)} - {account.displayName || account.email} ({account.status})</option>)}</select></label>
                 {selectedAccount ? <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0"><p className="break-all font-semibold text-sm">{selectedAccount.displayName || selectedAccount.email}</p><p className="text-xs text-slate-500 mt-0.5">{providerLabel(selectedAccount.provider)} · {selectedAccount.status}</p></div>
-                    <div className="grid grid-cols-2 gap-2 sm:flex"><Button className="w-full" size="sm" variant="outline" onClick={() => sync(selectedAccount.id)} disabled={syncingAccountId === selectedAccount.id}><RefreshCw className={syncingAccountId === selectedAccount.id ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{syncingAccountId === selectedAccount.id ? 'Syncing...' : 'Sync'}</Button><Button className="w-full" size="sm" variant="danger" onClick={() => setAccountToDisconnect(selectedAccount)}><Trash2 className="h-4 w-4" />Disconnect</Button></div>
+                    <div className="grid grid-cols-2 gap-2 sm:flex"><Button className="w-full" size="sm" variant="outline" onClick={() => sync(selectedAccount.id)} disabled={syncingAccountId === selectedAccount.id}><RefreshCw className={syncingAccountId === selectedAccount.id ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{syncingAccountId === selectedAccount.id ? t('syncing') : t('sync')}</Button><Button className="w-full" size="sm" variant="danger" onClick={() => setAccountToDisconnect(selectedAccount)}><Trash2 className="h-4 w-4" />{t('disconnect')}</Button></div>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{formatBytes(selectedAccount.storageAccount?.usedBytes)}</p><p className="mt-0.5 text-[10px] text-slate-500">Used</p></div>
-                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{storageLimitLabel(selectedAccount)}</p><p className="mt-0.5 text-[10px] text-slate-500">Total</p></div>
-                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{availableLabel(selectedAccount)}</p><p className="mt-0.5 text-[10px] text-slate-500">Free</p></div>
+                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{formatBytes(selectedAccount.storageAccount?.usedBytes)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('used')}</p></div>
+                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{storageLimitLabel(selectedAccount)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('total')}</p></div>
+                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{availableLabel(selectedAccount)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('free')}</p></div>
                   </div>
                 </div> : null}
               </>}
