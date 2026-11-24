@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef, type FormEvent } from 'react'
-import { Bell, Cloud, Database, Globe, HardDrive, Link2, RefreshCw, Trash2 } from 'lucide-react'
+import { Bell, Cloud, Database, Globe, HardDrive, Link2, RefreshCw, Scale, Settings, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DummyModal } from '@/components/drive/DummyModal'
 import { PageHeader } from '@/components/drive/PageHeader'
+import { GoogleDriveExplorer } from '@/components/drive/GoogleDriveExplorer'
+import { StorageBalancer } from '@/components/drive/StorageBalancer'
 import { apiFetch, formatBytes, API_URL } from '@/lib/api'
 import { getGravatarUrl } from '@/lib/gravatar'
 import { getStoredUser, getAccessToken, clearAuthSession } from '@/lib/auth'
@@ -66,6 +68,7 @@ export function SettingsPage() {
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
   const [restoreMessage, setRestoreMessage] = useState('')
   const [restoreSuccess, setRestoreSuccess] = useState(false)
+  const [activeTab, setActiveTab] = useState<'accounts' | 'explorer' | 'balancer'>('accounts')
 
   async function downloadBackup() {
     setDownloadingBackup(true)
@@ -355,7 +358,17 @@ export function SettingsPage() {
     <>
       <PageHeader title="Setting" description="Manage account and connected storage." actions={<><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />Connect S3</Button><Button size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Connecting...' : 'Connect Drive'}</Button></>} />
       {message ? <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
+      
+      <div className="mt-4 border-b border-slate-200 dark:border-slate-700">
+        <nav className="flex gap-1 px-1" role="tablist">
+          <button role="tab" aria-selected={activeTab === 'accounts'} onClick={() => setActiveTab('accounts')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'accounts' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Settings className="h-4 w-4 inline-block mr-1" />Contas</button>
+          <button role="tab" aria-selected={activeTab === 'explorer'} onClick={() => setActiveTab('explorer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'explorer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Cloud className="h-4 w-4 inline-block mr-1" />Drive Explorer</button>
+          <button role="tab" aria-selected={activeTab === 'balancer'} onClick={() => setActiveTab('balancer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'balancer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Scale className="h-4 w-4 inline-block mr-1" />Balanceamento</button>
+        </nav>
+      </div>
+
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
+        {activeTab === 'accounts' && (
         <div className="grid gap-4">
           <Card className="p-4">
             <div className="flex items-center gap-3.5">
@@ -608,6 +621,18 @@ export function SettingsPage() {
           <Card className="p-4"><Bell className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Notifications</h2><p className="mt-1 text-[12px] text-slate-500">Email and app alerts are active.</p></Card>
           <Card className="p-4"><Globe className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Region</h2><p className="mt-1 text-[12px] text-slate-500">Workspace region: local gateway.</p></Card>
         </div>
+      </div>
+        )}
+        {activeTab === 'explorer' && (
+          <div className="lg:col-span-2">
+            <GoogleDriveExplorer />
+          </div>
+        )}
+        {activeTab === 'balancer' && (
+          <div className="lg:col-span-2">
+            <StorageBalancer onComplete={() => setActiveTab('accounts')} />
+          </div>
+        )}
       </div>
       <DummyModal open={s3Open} title="Connect S3 Storage" description="Use any S3-compatible provider with custom endpoint support." onClose={() => setS3Open(false)}>
         <form className="grid gap-4" onSubmit={connectS3}>
