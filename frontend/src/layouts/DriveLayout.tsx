@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Outlet, useOutletContext, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Bell,
@@ -219,8 +219,11 @@ export function DriveLayout() {
   const [breakdown, setBreakdown] = useState<StorageBreakdown>({ photo: '0', video: '0', document: '0' })
   const [infoOpen, setInfoOpen] = useState(false)
   const [headerActions, setHeaderActions] = useState<ReactNode>(null)
+  const previousLang = useRef(lang)
 
   useEffect(() => {
+    if (previousLang.current === lang) return
+    previousLang.current = lang
     setHeaderActions(null)
   }, [lang])
   const { uploadProgress, setUploadProgress, retryFailedUpload } = useUpload()
