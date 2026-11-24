@@ -188,9 +188,9 @@ export function GoogleDriveExplorer() {
                       <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{file.size ? formatBytes(file.size) : file.mimeType === folderMime ? '—' : t('Unknown')}</td>
                       <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{file.modifiedTime ? formatDate(file.modifiedTime) : '—'}</td>
                       <td className="flex items-center justify-end gap-1 px-4 py-3 text-right">
-                        {file.webViewLink && <a href={file.webViewLink} target="_blank" rel="noopener noreferrer" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Open"><ExternalLink className="h-4 w-4" /></a>}
+                        {file.webViewLink && <a href={file.webViewLink} target="_blank" rel="noopener noreferrer" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label={t('Open')}><ExternalLink className="h-4 w-4" /></a>}
                         {file.capabilities?.canRename && <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => { setRenameItem(file); setRenameName(file.name); setRenameOpen(true) }} aria-label={t('Rename')}><Pencil className="h-4 w-4" /></button>}
-                        {file.capabilities?.canTrash && <button className="rounded-lg p-2 text-orange-600 hover:bg-orange-50" onClick={() => handleTrash(file)} aria-label="Trash"><Trash2 className="h-4 w-4" /></button>}
+                        {file.capabilities?.canTrash && <button className="rounded-lg p-2 text-orange-600 hover:bg-orange-50" onClick={() => handleTrash(file)} aria-label={t('Delete')}><Trash2 className="h-4 w-4" /></button>}
                       </td>
                     </tr>
                   ))}
