@@ -82,7 +82,7 @@ export function SettingsPage() {
         }
       })
       if (!response.ok) {
-        throw new Error('Failed to retrieve database backup.')
+        throw new Error(t('Failed to retrieve database backup.'))
       }
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
@@ -94,7 +94,7 @@ export function SettingsPage() {
       a.remove()
       window.URL.revokeObjectURL(url)
     } catch (err: any) {
-      alert('Failed to download backup: ' + err.message)
+      alert(t('Failed to download backup:') + ' ' + err.message)
     } finally {
       setDownloadingBackup(false)
     }
@@ -110,7 +110,7 @@ export function SettingsPage() {
 
   async function restoreBackup() {
     if (!restoreFile) return
-    if (!confirm('WARNING: Restoring database will overwrite all your current configurations, connected accounts, virtual folders, and user accounts. The server will restart. Are you sure you want to proceed?')) {
+    if (!confirm(t('WARNING: Restoring database will overwrite all your current configurations, connected accounts, virtual folders, and user accounts. The server will restart. Are you sure you want to proceed?'))) {
       return
     }
 
@@ -133,11 +133,11 @@ export function SettingsPage() {
 
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to restore database.')
+        throw new Error(data.message || t('Failed to restore database.'))
       }
 
       setRestoreSuccess(true)
-      setRestoreMessage(data.message || 'Database restored successfully! Logging you out and reloading...')
+      setRestoreMessage(data.message || t('Database restored successfully! Logging you out and reloading...'))
 
       setTimeout(() => {
         clearAuthSession()
@@ -146,7 +146,7 @@ export function SettingsPage() {
 
     } catch (err: any) {
       setRestoreSuccess(false)
-      setRestoreMessage(err.message || 'Failed to restore database.')
+      setRestoreMessage(err.message || t('Failed to restore database.'))
     } finally {
       setRestoringBackup(false)
     }
@@ -170,7 +170,7 @@ export function SettingsPage() {
           setUpdateFinished(true)
           setUpdateSuccess(true)
           setIsPollingLog(false)
-          setUpdateModalTitle('System Updated')
+          setUpdateModalTitle(t('System Updated'))
         }
       } catch (err) {
         if (!active) return
@@ -196,19 +196,19 @@ export function SettingsPage() {
   async function runSystemUpdate() {
     setUpdatingSystem(true)
     setMessage('')
-    setUpdateLog('Initiating system update in the background...\n')
+    setUpdateLog(t('Initiating system update in the background...') + '\n')
     setUpdateFinished(false)
     setUpdateSuccess(null)
     setReconnectCount(0)
-    setUpdateModalTitle('System Updating')
+    setUpdateModalTitle(t('System Updating'))
     setUpdateModalOpen(true)
 
     try {
       await apiFetch<{ message: string }>('/system/update', { method: 'POST' })
       setIsPollingLog(true)
     } catch (error) {
-      setUpdateModalTitle('System Update Failed')
-      const errMsg = error instanceof Error ? error.message : 'System update failed to initiate.'
+      setUpdateModalTitle(t('System Update Failed'))
+      const errMsg = error instanceof Error ? error.message : t('System update failed to initiate.')
       setUpdateLog((prev) => prev + `\nError: ${errMsg}`)
       setUpdateFinished(true)
       setUpdateSuccess(false)
@@ -230,11 +230,11 @@ export function SettingsPage() {
           redirectUri: googleRedirectUri || defaultRedirectUri,
         }),
       })
-      setMessage(res.message || 'Google OAuth credentials saved.')
+      setMessage(res.message || t('Google OAuth credentials saved.'))
       setHasSecret(true)
       setGoogleClientSecret('')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to save Google OAuth configuration')
+      setMessage(error instanceof Error ? error.message : t('Failed to save Google OAuth configuration'))
     } finally {
       setSavingGoogleConfig(false)
     }
@@ -260,7 +260,7 @@ export function SettingsPage() {
   }
 
   useEffect(() => {
-    load().catch((error) => setMessage(error instanceof Error ? error.message : 'Failed to load settings'))
+    load().catch((error) => setMessage(error instanceof Error ? error.message : t('Failed to load settings')))
   }, [])
 
   useEffect(() => {
@@ -279,7 +279,7 @@ export function SettingsPage() {
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin || event.data?.type !== 'GOOGLE_CONNECTED') return
-      setMessage(event.data.status === 'success' ? 'Google Drive connected.' : 'Google Drive connection failed.')
+      setMessage(event.data.status === 'success' ? t('Google Drive connected.') : t('Google Drive connection failed.'))
       load().then(() => {
         window.dispatchEvent(new Event('9drive:storage-changed'))
       }).catch(() => undefined)
@@ -293,7 +293,7 @@ export function SettingsPage() {
     setMessage('')
     const popup = window.open('', 'google-drive-connect', 'width=540,height=720')
     if (popup) {
-      popup.document.write('<html><head><title>Connecting...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;color:#64748b;}</style></head><body><div style="text-align:center;"><h2>Connecting to Google...</h2><p>Please wait while we redirect you.</p></div></body></html>')
+      popup.document.write(`<html><head><title>${t('Connecting...')}</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;color:#64748b;}</style></head><body><div style="text-align:center;"><h2>${t('Connecting to Google...')}</h2><p>${t('Please wait while we redirect you.')}</p></div></body></html>`)
     }
     try {
       const data = await apiFetch<{ url: string }>('/connected-accounts/google/connect-url')
@@ -304,7 +304,7 @@ export function SettingsPage() {
       }
     } catch (error) {
       if (popup) popup.close()
-      setMessage(error instanceof Error ? error.message : 'Failed to start Google Drive connection')
+      setMessage(error instanceof Error ? error.message : t('Failed to start Google Drive connection'))
     } finally {
       setConnecting(false)
     }
@@ -328,11 +328,11 @@ export function SettingsPage() {
     try {
       await apiFetch(`/connected-accounts/${accountToDisconnect.id}`, { method: 'DELETE' })
       setAccountToDisconnect(null)
-      setMessage('Storage account disconnected.')
+      setMessage(t('Storage account disconnected.'))
       await load()
       window.dispatchEvent(new Event('9drive:storage-changed'))
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to disconnect Google Drive account')
+      setMessage(error instanceof Error ? error.message : t('Failed to disconnect Google Drive account'))
     } finally {
       setDisconnectingAccountId(null)
     }
@@ -346,11 +346,11 @@ export function SettingsPage() {
       await apiFetch('/connected-accounts/s3', { method: 'POST', body: JSON.stringify({ ...s3Form, endpoint: s3Form.endpoint || undefined, quotaBytes: s3Form.quotaBytes || null }) })
       setS3Open(false)
       setS3Form({ name: '', bucket: '', region: 'us-east-1', endpoint: '', accessKeyId: '', secretAccessKey: '', forcePathStyle: false, quotaBytes: '' })
-      setMessage('S3 storage connected.')
+      setMessage(t('S3 storage connected.'))
       await load()
       window.dispatchEvent(new Event('9drive:storage-changed'))
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to connect S3 storage')
+      setMessage(error instanceof Error ? error.message : t('Failed to connect S3 storage'))
     } finally {
       setConnectingS3(false)
     }
@@ -358,14 +358,14 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title={t('settings')} description={t('manageAccount')} actions={<><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />{t('connectS3')}</Button><Button size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? t('syncing') : t('connectDrive')}</Button></>} />
+      <PageHeader title={t('Settings')} description={t('Manage account and connected storage.')} actions={<><Button variant="outline" size="sm" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />{t('Connect S3')}</Button><Button size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? t('Syncing...') : t('Connect Drive')}</Button></>} />
       {message ? <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-700">{message}</p> : null}
       
       <div className="mt-4 border-b border-slate-200 dark:border-slate-700">
         <nav className="flex gap-1 px-1" role="tablist">
-          <button role="tab" aria-selected={activeTab === 'accounts'} onClick={() => setActiveTab('accounts')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'accounts' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Settings className="h-4 w-4 inline-block mr-1" />{t('accounts')}</button>
-          <button role="tab" aria-selected={activeTab === 'explorer'} onClick={() => setActiveTab('explorer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'explorer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Cloud className="h-4 w-4 inline-block mr-1" />{t('driveExplorer')}</button>
-          <button role="tab" aria-selected={activeTab === 'balancer'} onClick={() => setActiveTab('balancer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'balancer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Scale className="h-4 w-4 inline-block mr-1" />{t('balancer')}</button>
+          <button role="tab" aria-selected={activeTab === 'accounts'} onClick={() => setActiveTab('accounts')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'accounts' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Settings className="h-4 w-4 inline-block mr-1" />{t('Accounts')}</button>
+          <button role="tab" aria-selected={activeTab === 'explorer'} onClick={() => setActiveTab('explorer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'explorer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Cloud className="h-4 w-4 inline-block mr-1" />{t('Drive Explorer')}</button>
+          <button role="tab" aria-selected={activeTab === 'balancer'} onClick={() => setActiveTab('balancer')} className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'balancer' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}><Scale className="h-4 w-4 inline-block mr-1" />{t('Balancer')}</button>
         </nav>
       </div>
 
@@ -378,9 +378,9 @@ export function SettingsPage() {
               <div>
                 <div className="flex items-center gap-2.5">
                   <Globe className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-[16px] font-bold">{t('language')}</h2>
+                  <h2 className="text-[16px] font-bold">{t('Language')}</h2>
                 </div>
-                <p className="mt-1 text-[13px] text-slate-500">{t('languageDesc')}</p>
+                <p className="mt-1 text-[13px] text-slate-500">{t('Choose your preferred interface language.')}</p>
               </div>
               <select
                 className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none dark:border-slate-700 dark:bg-slate-800"
@@ -419,7 +419,7 @@ export function SettingsPage() {
             <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2.5"><Cloud className="h-5 w-5 text-blue-600" /><h2 className="text-[16px] font-bold">Google Drive</h2></div>
-                <p className="mt-1 text-[13px] text-slate-500">Connect one or more Google Drive accounts. 9Drive will route uploads to account with enough space.</p>
+                <p className="mt-1 text-[13px] text-slate-500">{t('Connect one or more Google Drive accounts. 9Drive will route uploads to account with enough space.')}</p>
               </div>
               <Button className="w-full sm:w-32" size="sm" onClick={connectDrive} disabled={connecting}><Link2 className="h-4 w-4" />{connecting ? 'Opening...' : 'Connect Drive'}</Button>
             </div>
@@ -429,26 +429,26 @@ export function SettingsPage() {
             <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2.5"><Database className="h-5 w-5 text-blue-600" /><h2 className="text-[16px] font-bold">S3 Compatible</h2></div>
-                <p className="mt-1 text-[13px] text-slate-500">Connect AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, or custom endpoint storage.</p>
+                <p className="mt-1 text-[13px] text-slate-500">{t('Connect AWS S3, Cloudflare R2, MinIO, Wasabi, Backblaze B2, or custom endpoint storage.')}</p>
               </div>
-              <Button className="w-full sm:w-32" size="sm" variant="outline" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />{t('connectS3')}</Button>
+              <Button className="w-full sm:w-32" size="sm" variant="outline" onClick={() => setS3Open(true)}><Database className="h-4 w-4" />{t('Connect S3')}</Button>
             </div>
           </Card>
 
           <Card className="p-4">
-            <h2 className="text-[16px] font-bold">{t('connectedStorage')}</h2>
+            <h2 className="text-[16px] font-bold">{t('Connected Storage Accounts')}</h2>
             <div className="mt-3.5 grid gap-3">
-              {accounts.length === 0 ? <p className="text-xs text-slate-500">No connected storage account yet.</p> : <>
-                <label className="grid gap-1.5 text-xs font-semibold text-slate-500">{t('chooseAccount')}<select className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none" value={selectedAccount?.id ?? ''} onChange={(event) => setSelectedAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{providerLabel(account.provider)} - {account.displayName || account.email} ({account.status})</option>)}</select></label>
+              {accounts.length === 0 ? <p className="text-xs text-slate-500">{t('No connected storage account yet.')}</p> : <>
+                <label className="grid gap-1.5 text-xs font-semibold text-slate-500">{t('Choose Account')}<select className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none" value={selectedAccount?.id ?? ''} onChange={(event) => setSelectedAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{providerLabel(account.provider)} - {account.displayName || account.email} ({account.status})</option>)}</select></label>
                 {selectedAccount ? <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0"><p className="break-all font-semibold text-sm">{selectedAccount.displayName || selectedAccount.email}</p><p className="text-xs text-slate-500 mt-0.5">{providerLabel(selectedAccount.provider)} · {selectedAccount.status}</p></div>
-                    <div className="grid grid-cols-2 gap-2 sm:flex"><Button className="w-full" size="sm" variant="outline" onClick={() => sync(selectedAccount.id)} disabled={syncingAccountId === selectedAccount.id}><RefreshCw className={syncingAccountId === selectedAccount.id ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{syncingAccountId === selectedAccount.id ? t('syncing') : t('sync')}</Button><Button className="w-full" size="sm" variant="danger" onClick={() => setAccountToDisconnect(selectedAccount)}><Trash2 className="h-4 w-4" />{t('disconnect')}</Button></div>
+                    <div className="grid grid-cols-2 gap-2 sm:flex"><Button className="w-full" size="sm" variant="outline" onClick={() => sync(selectedAccount.id)} disabled={syncingAccountId === selectedAccount.id}><RefreshCw className={syncingAccountId === selectedAccount.id ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />{syncingAccountId === selectedAccount.id ? t('Syncing...') : t('Sync')}</Button><Button className="w-full" size="sm" variant="danger" onClick={() => setAccountToDisconnect(selectedAccount)}><Trash2 className="h-4 w-4" />{t('Disconnect')}</Button></div>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{formatBytes(selectedAccount.storageAccount?.usedBytes)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('used')}</p></div>
-                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{storageLimitLabel(selectedAccount)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('total')}</p></div>
-                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{availableLabel(selectedAccount)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('free')}</p></div>
+                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{formatBytes(selectedAccount.storageAccount?.usedBytes)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('Used')}</p></div>
+                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{storageLimitLabel(selectedAccount)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('Total')}</p></div>
+                    <div className="rounded-xl bg-white dark:bg-slate-950 p-2 border border-slate-100 dark:border-slate-800"><p className="font-extrabold text-slate-950">{availableLabel(selectedAccount)}</p><p className="mt-0.5 text-[10px] text-slate-500">{t('Free')}</p></div>
                   </div>
                 </div> : null}
               </>}
@@ -459,7 +459,7 @@ export function SettingsPage() {
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 mb-4">
               <div className="flex items-center gap-2.5">
                 <Cloud className="h-5 w-5 text-blue-600" />
-                <h2 className="text-[17px] font-bold">Google OAuth Credentials</h2>
+                <h2 className="text-[17px] font-bold">{t('Google OAuth Credentials')}</h2>
               </div>
               <Button
                 variant="outline"
@@ -468,34 +468,34 @@ export function SettingsPage() {
                 type="button"
                 onClick={() => setShowGoogleHelp(!showGoogleHelp)}
               >
-                {showGoogleHelp ? 'Hide Guide' : 'Setup Guide'}
+                {showGoogleHelp ? t('Hide Guide') : t('Setup Guide')}
               </Button>
             </div>
 
             {showGoogleHelp && (
               <div className="mb-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-3.5 text-[13px] leading-relaxed text-slate-600 border border-slate-100 dark:border-slate-800">
-                <p className="font-bold text-slate-800 dark:text-slate-200 mb-1.5">How to setup Google credentials:</p>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mb-1.5">{t('How to setup Google credentials:')}</p>
                 <ol className="list-decimal pl-4 space-y-1.5">
-                  <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Google Cloud Console</a>.</li>
-                  <li>Enable the <strong>Google Drive API</strong> in your project.</li>
-                  <li>Go to <strong>APIs & Services &gt; Credentials</strong>, click <strong>Create Credentials &gt; OAuth client ID</strong>.</li>
-                  <li>Set application type to <strong>Web application</strong>.</li>
-                  <li>Add this exact URL under <strong>Authorized redirect URIs</strong>:
+                  <li>{t('Go to')} <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{t('Google Cloud Console')}</a>.</li>
+                  <li>{t('Enable the')} <strong>{t('Google Drive API')}</strong> {t('in your project.')}</li>
+                  <li>{t('Go to')} <strong>{t('APIs & Services > Credentials')}</strong>, {t('click')} <strong>{t('Create Credentials > OAuth client ID')}</strong>.</li>
+                  <li>{t('Set application type to')} <strong>{t('Web application')}</strong>.</li>
+                  <li>{t('Add this exact URL under')} <strong>{t('Authorized redirect URIs')}</strong>:
                     <div className="mt-1 flex items-center gap-1.5 font-mono text-[11px] bg-white dark:bg-slate-950 p-1.5 rounded border border-slate-200 dark:border-slate-800 select-all overflow-x-auto">
                       {googleRedirectUri || defaultRedirectUri}
                     </div>
                   </li>
-                  <li>Copy the generated <strong>Client ID</strong> and <strong>Client Secret</strong> into the form below and save.</li>
+                  <li>{t('Copy the generated')} <strong>{t('Client ID')}</strong> {t('and')} <strong>{t('Client Secret')}</strong> {t('into the form below and save.')}</li>
                 </ol>
               </div>
             )}
 
             <form onSubmit={saveGoogleConfig} className="grid gap-3.5">
               <label className="grid gap-1.5 text-xs font-bold text-slate-500">
-                Client ID
+                {t('Client ID')}
                 <input
                   className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 text-sm focus:border-blue-600 focus:outline-none"
-                  placeholder="Enter Google Client ID"
+                  placeholder={t('Enter Google Client ID')}
                   value={googleClientId}
                   onChange={(e) => setGoogleClientId(e.target.value)}
                   required
@@ -503,11 +503,11 @@ export function SettingsPage() {
               </label>
 
               <label className="grid gap-1.5 text-xs font-bold text-slate-500">
-                Client Secret {hasSecret && <span className="font-normal text-emerald-600">(Already Configured)</span>}
+                {t('Client Secret')} {hasSecret && <span className="font-normal text-emerald-600">{t('(Already Configured)')}</span>}
                 <input
                   className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 text-sm focus:border-blue-600 focus:outline-none"
                   type="password"
-                  placeholder={hasSecret ? "••••••••••••••••••••••••" : "Enter Google Client Secret"}
+                  placeholder={hasSecret ? "••••••••••••••••••••••••" : t('Enter Google Client Secret')}
                   value={googleClientSecret}
                   onChange={(e) => setGoogleClientSecret(e.target.value)}
                   required={!hasSecret}
@@ -515,7 +515,7 @@ export function SettingsPage() {
               </label>
 
               <label className="grid gap-1.5 text-xs font-bold text-slate-500">
-                Redirect URI (Optional)
+                {t('Redirect URI (Optional)')}
                 <input
                   className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 text-sm focus:border-blue-600 focus:outline-none"
                   placeholder={defaultRedirectUri}
@@ -526,7 +526,7 @@ export function SettingsPage() {
 
               <div className="flex justify-end mt-1">
                 <Button type="submit" disabled={savingGoogleConfig} size="sm">
-                  {savingGoogleConfig ? 'Saving...' : 'Save Credentials'}
+                  {savingGoogleConfig ? t('Saving...') : t('Save Credentials')}
                 </Button>
               </div>
             </form>
@@ -537,10 +537,10 @@ export function SettingsPage() {
               <div>
                 <div className="flex items-center gap-2.5">
                   <RefreshCw className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-[16px] font-bold">System Update</h2>
+                  <h2 className="text-[16px] font-bold">{t('System Update')}</h2>
                 </div>
                 <p className="mt-1 text-[13px] text-slate-500">
-                  Pull the latest code from GitHub. Dev servers will automatically restart.
+                  {t('Pull the latest code from GitHub. Dev servers will automatically restart.')}
                 </p>
               </div>
               <Button
@@ -551,7 +551,7 @@ export function SettingsPage() {
                 disabled={updatingSystem}
               >
                 <RefreshCw className={updatingSystem ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-                {updatingSystem ? 'Updating...' : 'Update Code'}
+                {updatingSystem ? t('Updating...') : t('Update Code')}
               </Button>
             </div>
           </Card>
@@ -561,9 +561,9 @@ export function SettingsPage() {
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2.5">
                   <Database className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-[16px] font-bold">Backup & Restore Database</h2>
+                  <h2 className="text-[16px] font-bold">{t('Backup & Restore Database')}</h2>
                 </div>
-                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">SQLite Local Database</span>
+                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">{t('SQLite Local Database')}</span>
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
@@ -574,9 +574,9 @@ export function SettingsPage() {
                       <HardDrive className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Download Database Backup</h3>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{t('Download Database Backup')}</h3>
                       <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400 leading-normal">
-                        Save a copy of your active database containing accounts, virtual folders, file metadata, and configurations.
+                        {t('Save a copy of your active database containing accounts, virtual folders, file metadata, and configurations.')}
                       </p>
                     </div>
                   </div>
@@ -587,7 +587,7 @@ export function SettingsPage() {
                     style={{ color: '#ffffff' }}
                   >
                     <HardDrive className="h-4 w-4" style={{ color: '#ffffff' }} />
-                    <span style={{ color: '#ffffff' }}>{downloadingBackup ? 'Downloading...' : 'Download Backup'}</span>
+                    <span style={{ color: '#ffffff' }}>{downloadingBackup ? t('Downloading...') : t('Download Backup')}</span>
                   </button>
                 </div>
 
@@ -598,9 +598,9 @@ export function SettingsPage() {
                       <RefreshCw className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Restore Database Backup</h3>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{t('Restore Database Backup')}</h3>
                       <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400 leading-normal">
-                        Upload a previously downloaded 9Drive backup file to replace the active database.
+                        {t('Upload a previously downloaded 9Drive backup file to replace the active database.')}
                       </p>
                     </div>
                   </div>
@@ -620,7 +620,7 @@ export function SettingsPage() {
                         style={{ color: '#ffffff' }}
                       >
                         <RefreshCw className={restoringBackup ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} style={{ color: '#ffffff' }} />
-                        <span style={{ color: '#ffffff' }}>{restoringBackup ? 'Restoring & Restarting...' : 'Restore Backup'}</span>
+                        <span style={{ color: '#ffffff' }}>{restoringBackup ? t('Restoring & Restarting...') : t('Restore Backup')}</span>
                       </button>
                     ) : (
                       <button
@@ -628,7 +628,7 @@ export function SettingsPage() {
                         disabled
                       >
                         <RefreshCw className="h-4 w-4 text-slate-400 dark:text-slate-600" />
-                        <span>Restore Backup</span>
+                        <span>{t('Restore Backup')}</span>
                       </button>
                     )}
                   </div>
@@ -644,9 +644,9 @@ export function SettingsPage() {
           </Card>
         </div>
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 lg:gap-3">
-          <Card className="p-4"><HardDrive className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Storage</h2><p className="mt-1 text-[12px] text-slate-500">Connected accounts: {accounts.length}</p></Card>
-          <Card className="p-4"><Bell className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Notifications</h2><p className="mt-1 text-[12px] text-slate-500">Email and app alerts are active.</p></Card>
-          <Card className="p-4"><Globe className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Region</h2><p className="mt-1 text-[12px] text-slate-500">Workspace region: local gateway.</p></Card>
+          <Card className="p-4"><HardDrive className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">{t('Storage')}</h2><p className="mt-1 text-[12px] text-slate-500">{t('Connected accounts:')} {accounts.length}</p></Card>
+          <Card className="p-4"><Bell className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">{t('Notifications')}</h2><p className="mt-1 text-[12px] text-slate-500">{t('Email and app alerts are active.')}</p></Card>
+          <Card className="p-4"><Globe className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">{t('Region')}</h2><p className="mt-1 text-[12px] text-slate-500">{t('Workspace region: local gateway.')}</p></Card>
         </div>
         </>
         )}
@@ -661,28 +661,28 @@ export function SettingsPage() {
           </div>
         )}
       </div>
-      <DummyModal open={s3Open} title="Connect S3 Storage" description="Use any S3-compatible provider with custom endpoint support." onClose={() => setS3Open(false)}>
+      <DummyModal open={s3Open} title={t('Connect S3 Storage')} description={t('Use any S3-compatible provider with custom endpoint support.')} onClose={() => setS3Open(false)}>
         <form className="grid gap-4" onSubmit={connectS3}>
-          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Display name" value={s3Form.name} onChange={(event) => setS3Form({ ...s3Form, name: event.target.value })} required />
-          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Bucket" value={s3Form.bucket} onChange={(event) => setS3Form({ ...s3Form, bucket: event.target.value })} required />
-          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Region" value={s3Form.region} onChange={(event) => setS3Form({ ...s3Form, region: event.target.value })} required />
-          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Endpoint URL (optional)" value={s3Form.endpoint} onChange={(event) => setS3Form({ ...s3Form, endpoint: event.target.value })} />
-          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Access key ID" value={s3Form.accessKeyId} onChange={(event) => setS3Form({ ...s3Form, accessKeyId: event.target.value })} required />
-          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Secret access key" type="password" value={s3Form.secretAccessKey} onChange={(event) => setS3Form({ ...s3Form, secretAccessKey: event.target.value })} required />
-          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder="Quota bytes (optional)" inputMode="numeric" value={s3Form.quotaBytes} onChange={(event) => setS3Form({ ...s3Form, quotaBytes: event.target.value })} />
-          <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={s3Form.forcePathStyle} onChange={(event) => setS3Form({ ...s3Form, forcePathStyle: event.target.checked })} />Force path style</label>
-          <div className="grid gap-3 sm:flex sm:justify-end"><Button variant="outline" type="button" onClick={() => setS3Open(false)} disabled={connectingS3}>Cancel</Button><Button type="submit" disabled={connectingS3}>{connectingS3 ? 'Connecting...' : 'Connect S3'}</Button></div>
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder={t('Display name')} value={s3Form.name} onChange={(event) => setS3Form({ ...s3Form, name: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder={t('Bucket')} value={s3Form.bucket} onChange={(event) => setS3Form({ ...s3Form, bucket: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder={t('Region')} value={s3Form.region} onChange={(event) => setS3Form({ ...s3Form, region: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder={t('Endpoint URL (optional)')} value={s3Form.endpoint} onChange={(event) => setS3Form({ ...s3Form, endpoint: event.target.value })} />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder={t('Access key ID')} value={s3Form.accessKeyId} onChange={(event) => setS3Form({ ...s3Form, accessKeyId: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder={t('Secret access key')} type="password" value={s3Form.secretAccessKey} onChange={(event) => setS3Form({ ...s3Form, secretAccessKey: event.target.value })} required />
+          <input className="h-11 rounded-xl border border-slate-200 px-3 text-sm" placeholder={t('Quota bytes (optional)')} inputMode="numeric" value={s3Form.quotaBytes} onChange={(event) => setS3Form({ ...s3Form, quotaBytes: event.target.value })} />
+          <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={s3Form.forcePathStyle} onChange={(event) => setS3Form({ ...s3Form, forcePathStyle: event.target.checked })} />{t('Force path style')}</label>
+          <div className="grid gap-3 sm:flex sm:justify-end"><Button variant="outline" type="button" onClick={() => setS3Open(false)} disabled={connectingS3}>{t('Cancel')}</Button><Button type="submit" disabled={connectingS3}>{connectingS3 ? t('Connecting...') : t('Connect S3')}</Button></div>
         </form>
       </DummyModal>
-      <DummyModal open={Boolean(accountToDisconnect)} title="Disconnect storage?" description="This will remove this storage account from 9Drive. Existing file records for this account may no longer be usable." onClose={() => setAccountToDisconnect(null)}>
+      <DummyModal open={Boolean(accountToDisconnect)} title={t('Disconnect storage?')} description={t('This will remove this storage account from 9Drive. Existing file records for this account may no longer be usable.')} onClose={() => setAccountToDisconnect(null)}>
         <div className="grid gap-4">
           <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
             <p className="font-semibold text-slate-950">{accountToDisconnect?.email}</p>
-            <p className="mt-1">Used storage: {formatBytes(accountToDisconnect?.storageAccount?.usedBytes)}</p>
+            <p className="mt-1">{t('Used storage:')} {formatBytes(accountToDisconnect?.storageAccount?.usedBytes)}</p>
           </div>
           <div className="grid gap-3 sm:flex sm:justify-end">
-            <Button variant="outline" onClick={() => setAccountToDisconnect(null)} disabled={Boolean(disconnectingAccountId)}>Cancel</Button>
-            <Button variant="danger" onClick={disconnect} disabled={Boolean(disconnectingAccountId)}><Trash2 className="h-4 w-4" />{disconnectingAccountId ? 'Disconnecting...' : 'Disconnect'}</Button>
+            <Button variant="outline" onClick={() => setAccountToDisconnect(null)} disabled={Boolean(disconnectingAccountId)}>{t('Cancel')}</Button>
+            <Button variant="danger" onClick={disconnect} disabled={Boolean(disconnectingAccountId)}><Trash2 className="h-4 w-4" />{disconnectingAccountId ? t('Disconnecting...') : t('Disconnect')}</Button>
           </div>
         </div>
       </DummyModal>
@@ -692,13 +692,13 @@ export function SettingsPage() {
         title={updateModalTitle}
         description={
           updateFinished
-            ? (updateSuccess ? 'System updated successfully' : 'Update failed')
-            : 'Live installation logs'
+            ? (updateSuccess ? t('System updated successfully') : t('Update failed'))
+            : t('Live installation logs')
         }
         className="max-w-2xl"
         onClose={() => {
           if (!updateFinished) {
-            if (!confirm('The update is still running in the background. Close log viewer?')) {
+            if (!confirm(t('The update is still running in the background. Close log viewer?'))) {
               return
             }
           }
@@ -720,8 +720,8 @@ export function SettingsPage() {
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                 <span>
                   {reconnectCount > 0
-                    ? `Rebooting server and reconnecting... (attempt ${reconnectCount})`
-                    : 'Installing updates...'}
+                    ? `${t('Rebooting server and reconnecting...')} (${reconnectCount})`
+                    : t('Installing updates...')}
                 </span>
               </div>
             )}
@@ -731,7 +731,7 @@ export function SettingsPage() {
               variant="outline"
               onClick={() => {
                 if (!updateFinished) {
-                  if (!confirm('The update is still running. Close log viewer?')) return
+                  if (!confirm(t('The update is still running. Close log viewer?'))) return
                 }
                 setUpdateModalOpen(false)
                 setIsPollingLog(false)

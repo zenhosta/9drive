@@ -4,28 +4,29 @@ import { translations, type Language } from './i18n'
 type I18nContextType = {
   lang: Language
   setLang: (lang: Language) => void
-  t: (key: keyof typeof translations['en']) => string
+  t: (text: string) => string
 }
 
 const I18nContext = createContext<I18nContextType | undefined>(undefined)
 
+const LANGUAGES: Language[] = ['en', 'pt', 'es', 'ru', 'fr', 'de']
+
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Language>(() => {
     const saved = localStorage.getItem('9drive_lang')
-    return (saved === 'en' || saved === 'pt' || saved === 'es' || saved === 'ru' || saved === 'fr' || saved === 'de') ? saved : 'pt'
+    return LANGUAGES.includes(saved as Language) ? (saved as Language) : 'pt'
   })
 
   useEffect(() => {
     localStorage.setItem('9drive_lang', lang)
+    document.documentElement.lang = lang === 'pt' ? 'pt-BR' : lang
   }, [lang])
 
-  const setLang = (newLang: Language) => {
-    setLangState(newLang)
-  }
+  const setLang = (newLang: Language) => setLangState(newLang)
 
-  const t = (key: keyof typeof translations['en']) => {
-    const dict = translations[lang] || translations['en']
-    return (dict as any)[key] || translations['en'][key] || key
+  const t = (text: string) => {
+    if (lang === 'en') return text
+    return translations[lang]?.[text] ?? text
   }
 
   return (
@@ -37,8 +38,6 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 export function useTranslation() {
   const context = useContext(I18nContext)
-  if (!context) {
-    throw new Error('useTranslation must be used within an I18nProvider')
-  }
+  if (!context) throw new Error('useTranslation must be used within an I18nProvider')
   return context
 }

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatBytes } from '@/lib/api'
+import { useTranslation } from '@/lib/i18nContext'
 
 type TrashFile = {
   id: string
@@ -24,6 +25,7 @@ export function TrashPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'success' | 'error' | ''>('')
+  const { t } = useTranslation()
 
   async function loadTrash() {
     setLoading(true)
@@ -31,7 +33,7 @@ export function TrashPage() {
       const data = await apiFetch<{ files: TrashFile[] }>('/files/trash')
       setFiles(data.files)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to load trash')
+      setMessage(error instanceof Error ? error.message : t('Failed to load trash'))
       setMessageType('error')
     } finally {
       setLoading(false)
@@ -72,11 +74,11 @@ export function TrashPage() {
         ids.forEach((id) => next.delete(id))
         return next
       })
-      setMessage(`Successfully restored ${ids.length} file(s).`)
+      setMessage(`${t('Successfully restored')} ${ids.length} ${t('file(s).')}`)
       setMessageType('success')
       window.dispatchEvent(new Event('9drive:storage-changed'))
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to restore files')
+      setMessage(error instanceof Error ? error.message : t('Failed to restore files'))
       setMessageType('error')
     } finally {
       setLoading(false)
@@ -85,7 +87,7 @@ export function TrashPage() {
 
   async function handlePermanentDelete(ids: string[]) {
     if (ids.length === 0) return
-    if (!confirm(`Are you sure you want to permanently delete ${ids.length} file(s)? This action cannot be undone.`)) return
+    if (!confirm(`${t('Are you sure you want to permanently delete')} ${ids.length} ${t('file(s)? This action cannot be undone.')}`)) return
     setLoading(true)
     setMessage('')
     try {
@@ -99,11 +101,11 @@ export function TrashPage() {
         ids.forEach((id) => next.delete(id))
         return next
       })
-      setMessage(`Permanently deleted ${ids.length} file(s).`)
+      setMessage(`${t('Permanently deleted')} ${ids.length} ${t('file(s).')}`)
       setMessageType('success')
       window.dispatchEvent(new Event('9drive:storage-changed'))
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Failed to permanently delete files')
+      setMessage(error instanceof Error ? error.message : t('Failed to permanently delete files'))
       setMessageType('error')
     } finally {
       setLoading(false)
@@ -113,16 +115,16 @@ export function TrashPage() {
   return (
     <>
       <PageHeader
-        title="Recycle Bin"
-        description="Manage deleted files. Restore them to active folders or delete them permanently."
+        title={t('Recycle Bin')}
+        description={t('Manage deleted files. Restore them to active folders or delete them permanently.')}
         actions={
           selectedIds.size > 0 ? (
             <>
               <Button variant="outline" onClick={() => handleRestore(Array.from(selectedIds))} disabled={loading}>
-                <RotateCcw className="h-4 w-4" /> Restore Selected ({selectedIds.size})
+                <RotateCcw className="h-4 w-4" /> {t('Restore Selected')} ({selectedIds.size})
               </Button>
               <Button variant="danger" onClick={() => handlePermanentDelete(Array.from(selectedIds))} disabled={loading}>
-                <Trash2 className="h-4 w-4" /> Delete Selected ({selectedIds.size})
+                <Trash2 className="h-4 w-4" /> {t('Delete Selected')} ({selectedIds.size})
               </Button>
             </>
           ) : null
@@ -144,8 +146,8 @@ export function TrashPage() {
         {files.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center">
             <Trash2 className="h-12 w-12 text-slate-400 mb-3" />
-            <p className="text-base font-bold">Trash is empty</p>
-            <p className="text-sm text-slate-500 mt-1">Deleted files will appear here.</p>
+            <p className="text-base font-bold">{t('Trash is empty')}</p>
+            <p className="text-sm text-slate-500 mt-1">{t('Deleted files will appear here.')}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -160,11 +162,11 @@ export function TrashPage() {
                       className="rounded border-slate-300"
                     />
                   </th>
-                  <th className="p-4">Name</th>
-                  <th className="p-4">Account</th>
-                  <th className="p-4">Size</th>
-                  <th className="p-4">Deleted At</th>
-                  <th className="p-4 text-right">Actions</th>
+                  <th className="p-4">{t('Name')}</th>
+                  <th className="p-4">{t('Account')}</th>
+                  <th className="p-4">{t('Size')}</th>
+                  <th className="p-4">{t('Deleted At')}</th>
+                  <th className="p-4 text-right">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,7 +202,7 @@ export function TrashPage() {
                           size="sm"
                           onClick={() => handleRestore([file.id])}
                           disabled={loading}
-                          title="Restore"
+                          title={t('Restore')}
                         >
                           <RotateCcw className="h-4 w-4" />
                         </Button>
@@ -209,7 +211,7 @@ export function TrashPage() {
                           size="sm"
                           onClick={() => handlePermanentDelete([file.id])}
                           disabled={loading}
-                          title="Delete Permanently"
+                          title={t('Delete Permanently')}
                         >
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
