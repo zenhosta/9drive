@@ -550,6 +550,12 @@ const es = {
   'Upload endpoint': 'Endpoint de subida',
   'Uploading...': 'Subiendo...',
   'with a team member.': 'con un miembro del equipo.',
+  'accepted': 'Aceptado',
+  'pending': 'Pendiente',
+  'active': 'Activo',
+  'revoked': 'Revocado',
+  'expired': 'Expirado',
+  'disconnected': 'Desconectado',
 }
 
 export default es

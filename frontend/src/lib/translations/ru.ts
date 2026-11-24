@@ -544,6 +544,12 @@ const ru = {
   'Upload endpoint': 'Endpoint загрузки',
   'Uploading...': 'Загрузка...',
   'with a team member.': 'с участником команды.',
+  'accepted': 'Принято',
+  'pending': 'Ожидает',
+  'active': 'Активен',
+  'revoked': 'Отозван',
+  'expired': 'Истек',
+  'disconnected': 'Отключен',
 }
 
 export default ru

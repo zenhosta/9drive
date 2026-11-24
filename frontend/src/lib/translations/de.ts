@@ -544,6 +544,12 @@ const de = {
   'Upload endpoint': 'Upload-Endpoint',
   'Uploading...': 'Hochladen...',
   'with a team member.': 'mit einem Teammitglied.',
+  'accepted': 'Akzeptiert',
+  'pending': 'Ausstehend',
+  'active': 'Aktiv',
+  'revoked': 'Widerrufen',
+  'expired': 'Abgelaufen',
+  'disconnected': 'Getrennt',
 }
 
 export default de

@@ -554,6 +554,12 @@ const pt = {
   'Upload endpoint': 'Endpoint de upload',
   'Uploading...': 'Enviando...',
   'with a team member.': 'com um membro da equipe.',
+  'accepted': 'Aceito',
+  'pending': 'Pendente',
+  'active': 'Ativo',
+  'revoked': 'Revogado',
+  'expired': 'Expirado',
+  'disconnected': 'Desconectado',
 }
 
 export default pt
