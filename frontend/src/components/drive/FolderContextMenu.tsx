@@ -1,5 +1,6 @@
 import { Copy, Edit3, FolderOpen, Scissors, Trash2, UserPlus } from 'lucide-react'
 import type { FolderItem } from '@/data/drive-data'
+import { useTranslation } from '@/lib/i18nContext'
 
 type Props = {
   x: number
@@ -44,6 +45,7 @@ function MenuItem({ icon: Icon, label, onClick, danger = false, kbd }: { icon: R
 }
 
 export function FolderContextMenu({ x, y, folder, onClose, onCut, onRename, onInvite, onCopyLink, onDelete }: Props) {
+  const { t } = useTranslation()
   if (!folder) return null
   const safeX = Math.max(12, Math.min(x, window.innerWidth - 228))
   const safeY = Math.max(12, Math.min(y, window.innerHeight - 280))
@@ -52,7 +54,7 @@ export function FolderContextMenu({ x, y, folder, onClose, onCut, onRename, onIn
     <>
       <button
         className="fixed inset-0 z-40 cursor-default"
-        aria-label="Close folder menu"
+        aria-label={t('Close folder menu')}
         onClick={onClose}
       />
       <div
@@ -71,19 +73,19 @@ export function FolderContextMenu({ x, y, folder, onClose, onCut, onRename, onIn
             </span>
             <div className="min-w-0">
               <p className="truncate text-[13px] font-bold leading-tight text-slate-900 dark:text-slate-100">{folder.name}</p>
-              <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">Virtual folder</p>
+              <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">{t('Virtual folder')}</p>
             </div>
           </div>
         </div>
 
         {/* Actions */}
         <div className="p-1.5">
-          <MenuItem icon={Copy} label="Copy Link" onClick={onCopyLink} />
-          <MenuItem icon={Scissors} label="Cut" onClick={onCut} kbd="⌘X" />
-          <MenuItem icon={Edit3} label="Rename" onClick={onRename} />
-          <MenuItem icon={UserPlus} label="Invite Member" onClick={onInvite} />
+          <MenuItem icon={Copy} label={t('Copy Link')} onClick={onCopyLink} />
+          <MenuItem icon={Scissors} label={t('Cut')} onClick={onCut} kbd="⌘X" />
+          <MenuItem icon={Edit3} label={t('Rename')} onClick={onRename} />
+          <MenuItem icon={UserPlus} label={t('Invite Member')} onClick={onInvite} />
           <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
-          <MenuItem icon={Trash2} label="Delete Folder" onClick={onDelete} danger />
+          <MenuItem icon={Trash2} label={t('Delete Folder')} onClick={onDelete} danger />
         </div>
       </div>
     </>

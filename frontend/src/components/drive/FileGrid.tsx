@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card'
 import { FileIcon } from '@/components/drive/FileIcon'
 import type { FileItem } from '@/data/drive-data'
 import { cn } from '@/lib/utils'
+import { useTranslation } from '@/lib/i18nContext'
 
 export type FileSizeScale = 'xs' | 'sm' | 'md' | 'lg'
 
@@ -87,6 +88,7 @@ export function FileGrid({
   onFileContextMenu?: (event: MouseEvent<HTMLElement>, file: FileItem) => void
   onToggleFile?: (file: FileItem) => void
 }) {
+  const { t } = useTranslation()
   const cfg = scaleConfig[sizeScale]
   return (
     <div className={cn("mt-5 grid", cfg.grid)}>
@@ -108,7 +110,7 @@ export function FileGrid({
           >
             <div className="flex items-start justify-between gap-2">
               <input type="checkbox" className={cn("shrink-0 accent-blue-600", cfg.checkbox)} checked={selected} onChange={() => onToggleFile?.(file)} onClick={(event) => event.stopPropagation()} />
-              <button className={cn("flex shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-white/80", cfg.menuBtn)} onClick={(event) => { event.stopPropagation(); onFileContextMenu?.(event, file) }} aria-label={`Open ${file.name} menu`}><MoreVertical className="h-4 w-4" /></button>
+              <button className={cn("flex shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-white/80", cfg.menuBtn)} onClick={(event) => { event.stopPropagation(); onFileContextMenu?.(event, file) }} aria-label={`${t('Open')} ${file.name} ${t('menu')}`}><MoreVertical className="h-4 w-4" /></button>
             </div>
 
             <div className="flex justify-center mt-2">

@@ -1,5 +1,6 @@
 import { Copy, Download, Edit3, Eye, FolderInput, Info, Link2, Trash2, UserPlus } from 'lucide-react'
 import type { FileItem } from '@/data/drive-data'
+import { useTranslation } from '@/lib/i18nContext'
 
 type Props = {
   x: number
@@ -62,12 +63,13 @@ function MenuItem({ icon: Icon, label, onClick, danger = false, kbd }: { icon: R
 }
 
 export function FileContextMenu({ x, y, file, onClose, onView, onDownload, onRename, onMove, onDetails, onShare, onCopyLink, onInvite, onDelete }: Props) {
+  const { t } = useTranslation()
   if (!file) return null
 
   const safeX = Math.max(12, Math.min(x, window.innerWidth - 228))
   const safeY = Math.max(12, Math.min(y, window.innerHeight - 430))
   const kindColor = kindColors[file.kind] ?? 'bg-slate-500'
-  const kindLabel = kindLabels[file.kind] ?? 'File'
+  const kindLabel = t(kindLabels[file.kind] ?? 'File')
 
   function handleShare() {
     onShare()
@@ -81,7 +83,7 @@ export function FileContextMenu({ x, y, file, onClose, onView, onDownload, onRen
     <>
       <button
         className="fixed inset-0 z-40 cursor-default"
-        aria-label="Close file menu"
+        aria-label={t('Close file menu')}
         onClick={onClose}
       />
       <div
@@ -112,7 +114,7 @@ export function FileContextMenu({ x, y, file, onClose, onView, onDownload, onRen
                 )}
                 {!file.folderName && (
                   <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 dark:bg-slate-800 dark:text-slate-500">
-                    / All Files
+                    {t('/ All Files')}
                   </span>
                 )}
               </div>
@@ -122,21 +124,21 @@ export function FileContextMenu({ x, y, file, onClose, onView, onDownload, onRen
 
         {/* Actions */}
         <div className="p-1.5">
-          <MenuItem icon={Eye} label="Preview" onClick={onView} kbd="↵" />
-          <MenuItem icon={Download} label="Download" onClick={onDownload} />
-          <MenuItem icon={Edit3} label="Rename" onClick={onRename} />
-          <MenuItem icon={FolderInput} label="Move to Folder" onClick={onMove} />
-          <MenuItem icon={Info} label="Details" onClick={onDetails} />
+          <MenuItem icon={Eye} label={t('Preview')} onClick={onView} kbd="↵" />
+          <MenuItem icon={Download} label={t('Download')} onClick={onDownload} />
+          <MenuItem icon={Edit3} label={t('Rename')} onClick={onRename} />
+          <MenuItem icon={FolderInput} label={t('Move to Folder')} onClick={onMove} />
+          <MenuItem icon={Info} label={t('Details')} onClick={onDetails} />
 
           <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
 
-          <MenuItem icon={Link2} label="Share Link" onClick={handleShare} />
-          <MenuItem icon={Copy} label="Copy Link" onClick={handleCopyLink} kbd="Ctrl+L" />
-          <MenuItem icon={UserPlus} label="Invite Member" onClick={onInvite} />
+          <MenuItem icon={Link2} label={t('Share Link')} onClick={handleShare} />
+          <MenuItem icon={Copy} label={t('Copy Link')} onClick={handleCopyLink} kbd="Ctrl+L" />
+          <MenuItem icon={UserPlus} label={t('Invite Member')} onClick={onInvite} />
 
           <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
 
-          <MenuItem icon={Trash2} label="Delete" onClick={onDelete} danger />
+          <MenuItem icon={Trash2} label={t('Delete')} onClick={onDelete} danger />
         </div>
       </div>
     </>

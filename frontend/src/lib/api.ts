@@ -54,5 +54,7 @@ export function formatBytes(input: string | number | bigint | null | undefined) 
 }
 
 export function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('9drive_lang') : null
+  const locale = stored === 'pt' ? 'pt-BR' : stored === 'es' ? 'es' : stored === 'ru' ? 'ru' : stored === 'fr' ? 'fr' : stored === 'de' ? 'de' : 'en'
+  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }

@@ -15,6 +15,9 @@ import { apiKeyRouter } from './modules/api-keys/api-key.routes.js'
 import { publicApiRouter } from './modules/public-api/public-api.routes.js'
 import { auditLogRouter } from './modules/audit-logs/audit-log.routes.js'
 import { systemRouter } from './modules/system/system.routes.js'
+import { rebalanceRouter } from './modules/rebalance/rebalance.routes.js'
+import { googleFilesRouter } from './modules/google/google-files.routes.js'
+import { googleTrashRouter } from './modules/google/google-trash.routes.js'
 
 export const app = express()
 app.set('trust proxy', true)
@@ -36,4 +39,7 @@ app.use('/folders', folderRouter)
 app.use('/invites', inviteRouter)
 app.use('/audit-logs', auditLogRouter)
 app.use('/system', systemRouter)
+app.use('/rebalance', rebalanceRouter)
+app.use('/google-files', googleFilesRouter)
+app.use('/google-trash', googleTrashRouter)
 app.use(errorMiddleware)

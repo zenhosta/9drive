@@ -14,6 +14,7 @@ import {
 import { Card } from '@/components/ui/card'
 import { PageHeader } from '@/components/drive/PageHeader'
 import { apiFetch, formatDate } from '@/lib/api'
+import { useTranslation } from '@/lib/i18nContext'
 import { cn } from '@/lib/utils'
 
 type AuditLog = {
@@ -29,6 +30,7 @@ export function ActivityLogPage() {
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const { t } = useTranslation()
 
   async function loadLogs() {
     setLoading(true)
@@ -37,7 +39,7 @@ export function ActivityLogPage() {
       const data = await apiFetch<{ logs: AuditLog[] }>('/audit-logs')
       setLogs(data.logs)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load activity logs')
+      setError(err instanceof Error ? err.message : t('Failed to load activity logs'))
     } finally {
       setLoading(false)
     }
@@ -108,13 +110,13 @@ export function ActivityLogPage() {
 
     // Special metadata keys rendering
     const parts: string[] = []
-    if (parsed.name) parts.push(`Name: ${parsed.name}`)
-    if (parsed.fileName) parts.push(`File: ${parsed.fileName}`)
-    if (parsed.folderName) parts.push(`Folder: ${parsed.folderName}`)
-    if (parsed.count !== undefined) parts.push(`Count: ${parsed.count}`)
+    if (parsed.name) parts.push(`${t('Name:')} ${parsed.name}`)
+    if (parsed.fileName) parts.push(`${t('File:')} ${parsed.fileName}`)
+    if (parsed.folderName) parts.push(`${t('Folder:')} ${parsed.folderName}`)
+    if (parsed.count !== undefined) parts.push(`${t('Count:')} ${parsed.count}`)
     if (parsed.sizeBytes !== undefined) {
       const bytes = Number(parsed.sizeBytes)
-      parts.push(`Size: ${formatBytes(bytes)}`)
+      parts.push(`${t('Size:')} ${formatBytes(bytes)}`)
     }
 
     if (parts.length > 0) {
@@ -135,8 +137,8 @@ export function ActivityLogPage() {
   return (
     <>
       <PageHeader
-        title="Activity Log"
-        description="View audit trails and file activities in your 9Drive workspace."
+        title={t('Activity Log')}
+        description={t('View audit trails and file activities in your 9Drive workspace.')}
       />
 
       {error && (
@@ -150,7 +152,7 @@ export function ActivityLogPage() {
         <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4">
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <History className="h-5 w-5 text-slate-500" />
-            Recent Activity Trail
+            {t('Recent Activity Trail')}
           </h2>
         </div>
 
@@ -158,13 +160,13 @@ export function ActivityLogPage() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-500">
               <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-2" />
-              <p className="text-sm">Loading activity logs...</p>
+              <p className="text-sm">{t('Loading activity logs...')}</p>
             </div>
           ) : logs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400">
               <History className="h-12 w-12 stroke-[1.5] mb-3 text-slate-300" />
-              <p className="font-semibold text-slate-600">No activity yet</p>
-              <p className="text-sm text-slate-400 mt-1">Actions you perform on your folders and files will appear here.</p>
+              <p className="font-semibold text-slate-600">{t('No activity yet')}</p>
+              <p className="text-sm text-slate-400 mt-1">{t('Actions you perform on your folders and files will appear here.')}</p>
             </div>
           ) : (
             logs.map((log) => {

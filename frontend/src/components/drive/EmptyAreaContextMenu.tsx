@@ -1,4 +1,5 @@
 import { ClipboardPaste, FolderPlus, Upload } from 'lucide-react'
+import { useTranslation } from '@/lib/i18nContext'
 
 type Props = {
   x: number
@@ -37,6 +38,7 @@ function MenuItem({ icon: Icon, label, onClick, accent = false }: { icon: React.
 }
 
 export function EmptyAreaContextMenu({ x, y, open, canPasteFolder = false, onClose, onUpload, onCreateFolder, onPasteFolder }: Props) {
+  const { t } = useTranslation()
   if (!open) return null
   const safeX = Math.max(12, Math.min(x, window.innerWidth - 228))
   const safeY = Math.max(12, Math.min(y, window.innerHeight - 160))
@@ -45,7 +47,7 @@ export function EmptyAreaContextMenu({ x, y, open, canPasteFolder = false, onClo
     <>
       <button
         className="fixed inset-0 z-40 cursor-default"
-        aria-label="Close empty area menu"
+        aria-label={t('Close empty area menu')}
         onClick={onClose}
       />
       <div
@@ -57,12 +59,12 @@ export function EmptyAreaContextMenu({ x, y, open, canPasteFolder = false, onClo
         }
       >
         <div className="p-1.5">
-          <MenuItem icon={Upload} label="Upload File" onClick={onUpload} accent />
-          <MenuItem icon={FolderPlus} label="New Folder" onClick={onCreateFolder} />
+          <MenuItem icon={Upload} label={t('Upload File')} onClick={onUpload} accent />
+          <MenuItem icon={FolderPlus} label={t('New Folder')} onClick={onCreateFolder} />
           {canPasteFolder && onPasteFolder ? (
             <>
               <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
-              <MenuItem icon={ClipboardPaste} label="Paste Folder Here" onClick={onPasteFolder} />
+              <MenuItem icon={ClipboardPaste} label={t('Paste Folder Here')} onClick={onPasteFolder} />
             </>
           ) : null}
         </div>

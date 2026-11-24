@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { FolderItem } from '@/data/drive-data'
 import { FolderVisual } from '@/components/drive/FolderVisual'
+import { useTranslation } from '@/lib/i18nContext'
 
 export type FolderSizeScale = 'xs' | 'sm' | 'md' | 'lg'
 
@@ -64,6 +65,7 @@ export function FolderGrid({
   onFolderOpen?: (folder: FolderItem) => void
   onDropItem?: (fileId: string, folderId: string) => void
 }) {
+  const { t } = useTranslation()
   const cfg = scaleConfig[sizeScale]
   return (
     <div className={cn('mt-6 grid', cfg.grid, mobileTwoColumns && sizeScale === 'md' && 'grid-cols-2')}>
@@ -89,7 +91,7 @@ export function FolderGrid({
           <button
             className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 sm:right-3 sm:top-3"
             onClick={(event) => { event.stopPropagation(); onFolderMenu?.(event, folder) }}
-            aria-label={`Open ${folder.name} menu`}
+            aria-label={`${t('Open')} ${folder.name} ${t('menu')}`}
           >
             <MoreVertical className="h-4 w-4" />
           </button>

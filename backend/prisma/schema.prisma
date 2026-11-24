@@ -29,6 +29,7 @@ model User {
   auditLogs      AuditLog[]
   workspaceInvitesSent WorkspaceInvite[] @relation("WorkspaceInvitesSent")
   uploadRoutingPolicy UploadRoutingPolicy?
+  rebalanceJob StorageRebalanceJob?
   apiKeys       ApiKey[]
 
   @@map("users")
@@ -350,4 +351,19 @@ model WorkspaceInvite {
   @@index([inviteeEmail])
   @@index([targetType, targetId])
   @@map("workspace_invites")
+}
+
+// One reviewed plan per user prevents overlapping redistribution jobs.
+model StorageRebalanceJob {
+  id              String   @id @default(uuid()) @db.Char(36)
+  userId          String   @unique @map("user_id") @db.Char(36)
+  status          String   @default("draft") @db.VarChar(32)
+  plan            Json
+  pauseRequested  Boolean  @default(false) @map("pause_requested")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("storage_rebalance_jobs")
 }
