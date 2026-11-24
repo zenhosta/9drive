@@ -326,10 +326,3 @@ export const translations = {
     save: 'Speichern',
   },
 } as const
-
-export function useLanguage() {
-  const [lang, setLang] = ReactStateWrapper()
-  return { lang, setLang }
-}
-
-// Helper context or storage hook for language state across components

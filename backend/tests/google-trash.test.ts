@@ -1,5 +1,14 @@
 import { assertTrashAction } from '../src/modules/google/google-trash.service.js'
 
+function expectTrashError(fn: () => void) {
+  expect(fn).toThrow()
+  try {
+    fn()
+  } catch (error) {
+    expect((error as Error).name).toBe('TrashError')
+  }
+}
+
 describe('google-trash', () => {
   const trashedFile = {
     id: 'f1',
@@ -15,11 +24,8 @@ describe('google-trash', () => {
   }
 
   const notTrashedFile = { ...trashedFile, trashed: false }
-
   const notOwnedFile = { ...trashedFile, ownedByMe: false }
-
   const cannotUntrashFile = { ...trashedFile, explicitlyTrashed: false, capabilities: { canDelete: true, canUntrash: false } }
-
   const cannotDeleteFile = { ...trashedFile, capabilities: { canDelete: false, canUntrash: true } }
 
   test('assertTrashAction passes for valid restore', () => {
@@ -31,20 +37,20 @@ describe('google-trash', () => {
   })
 
   test('assertTrashAction throws for not trashed', () => {
-    expect(() => assertTrashAction(notTrashedFile, 'restore')).toThrow('TrashError')
-    expect(() => assertTrashAction(notTrashedFile, 'delete')).toThrow('TrashError')
+    expectTrashError(() => assertTrashAction(notTrashedFile, 'restore'))
+    expectTrashError(() => assertTrashAction(notTrashedFile, 'delete'))
   })
 
   test('assertTrashAction throws for not owned', () => {
-    expect(() => assertTrashAction(notOwnedFile, 'restore')).toThrow('TrashError')
-    expect(() => assertTrashAction(notOwnedFile, 'delete')).toThrow('TrashError')
+    expectTrashError(() => assertTrashAction(notOwnedFile, 'restore'))
+    expectTrashError(() => assertTrashAction(notOwnedFile, 'delete'))
   })
 
   test('assertTrashAction throws when cannot untrash', () => {
-    expect(() => assertTrashAction(cannotUntrashFile, 'restore')).toThrow('TrashError')
+    expectTrashError(() => assertTrashAction(cannotUntrashFile, 'restore'))
   })
 
   test('assertTrashAction throws when cannot delete', () => {
-    expect(() => assertTrashAction(cannotDeleteFile, 'delete')).toThrow('TrashError')
+    expectTrashError(() => assertTrashAction(cannotDeleteFile, 'delete'))
   })
 })

@@ -371,6 +371,7 @@ export function SettingsPage() {
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
         {activeTab === 'accounts' && (
+        <>
         <div className="grid gap-4">
           <Card className="p-4">
             <div className="flex items-center justify-between gap-4">
@@ -647,7 +648,7 @@ export function SettingsPage() {
           <Card className="p-4"><Bell className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Notifications</h2><p className="mt-1 text-[12px] text-slate-500">Email and app alerts are active.</p></Card>
           <Card className="p-4"><Globe className="h-5 w-5 text-blue-600" /><h2 className="mt-2 text-[14px] font-bold">Region</h2><p className="mt-1 text-[12px] text-slate-500">Workspace region: local gateway.</p></Card>
         </div>
-      </div>
+        </>
         )}
         {activeTab === 'explorer' && (
           <div className="lg:col-span-2">

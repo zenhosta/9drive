@@ -49,6 +49,11 @@ describe('planner', () => {
     const moves: Move[] = [
       { ...candidates[0], id: 'm1', targetAccountId: 'a2', status: 'pending' },
     ]
-    expect(() => selectBalanceMoves(accounts, moves, ['invalid'])).toThrow('BalanceError')
+    expect(() => selectBalanceMoves(accounts, moves, ['invalid'])).toThrow()
+    try {
+      selectBalanceMoves(accounts, moves, ['invalid'])
+    } catch (error) {
+      expect((error as Error).name).toBe('BalanceError')
+    }
   })
 })

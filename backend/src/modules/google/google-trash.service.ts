@@ -45,12 +45,12 @@ export async function changeGoogleTrash(userId: string, accountId: string, fileI
   if (action === 'restore') {
     await drive.files.update({ fileId, requestBody: { trashed: false }, fields: 'id,trashed' })
     await syncGoogleQuota(accountId)
-    await createAuditLog({ userId, action: 'trash_restore', entityType: 'file', entityId: fileId, metadata: { accountId, name: file.name } })
+    await createAuditLog(userId, 'trash_restore', 'file', fileId, { accountId, name: file.name })
     return { restored: true }
   } else {
     await drive.files.delete({ fileId })
     await syncGoogleQuota(accountId)
-    await createAuditLog({ userId, action: 'trash_delete', entityType: 'file', entityId: fileId, metadata: { accountId, name: file.name } })
+    await createAuditLog(userId, 'trash_delete', 'file', fileId, { accountId, name: file.name })
     return { deleted: true }
   }
 }
