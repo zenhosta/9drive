@@ -138,7 +138,7 @@ export function AllFilesPage() {
   const { setHeaderActions } = useDriveLayoutActions()
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([])
   const [selectedTargetAccountId, setSelectedTargetAccountId] = useState('')
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
 
   function changeFolderSize(scale: FolderSizeScale) {
     setFolderSizeScale(scale)
@@ -667,7 +667,8 @@ export function AllFilesPage() {
         </Button>
       </div>
     )
-  }, [syncingDrive, folderSizeScale])
+    return () => setHeaderActions(null)
+  }, [syncingDrive, folderSizeScale, lang])
 
 
   const recentFolders = folders.slice(0, 4)
