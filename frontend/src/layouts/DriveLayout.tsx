@@ -208,7 +208,7 @@ export function useDriveLayoutActions() {
 }
 
 export function DriveLayout() {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -219,6 +219,10 @@ export function DriveLayout() {
   const [breakdown, setBreakdown] = useState<StorageBreakdown>({ photo: '0', video: '0', document: '0' })
   const [infoOpen, setInfoOpen] = useState(false)
   const [headerActions, setHeaderActions] = useState<ReactNode>(null)
+
+  useEffect(() => {
+    setHeaderActions(null)
+  }, [lang])
   const { uploadProgress, setUploadProgress, retryFailedUpload } = useUpload()
   const [uploadProgressCollapsed, setUploadProgressCollapsed] = useState(false)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
