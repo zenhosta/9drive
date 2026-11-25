@@ -4,15 +4,12 @@ import type { ConnectedAccount, File, S3StorageConfig } from '@prisma/client'
 import type { Response } from 'express'
 import type { Readable } from 'node:stream'
 import { prisma } from '../../config/prisma.js'
+import { contentDisposition } from '../../utils/content-disposition.js'
 import { decryptText } from '../../utils/crypto.js'
 
 type S3Config = S3StorageConfig
 type FileWithAccount = File & { connectedAccount: ConnectedAccount }
 type StreamOptions = { disposition?: 'inline' | 'attachment' }
-
-function contentDisposition(type: 'inline' | 'attachment', fileName: string) {
-  return `${type}; filename="${fileName.replaceAll('"', '')}"`
-}
 
 export function createS3Client(config: S3Config) {
   return new S3Client({
