@@ -37,7 +37,7 @@ export function LoginPage() {
     try {
       const data = await apiFetch<AuthResponse>('/auth/login', { method: 'POST', skipAuth: true, body: JSON.stringify({ email, password }) })
       setAuthSession(data.accessToken, data.refreshToken, data.user)
-      navigate('/all-files')
+      navigate('/overview')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
