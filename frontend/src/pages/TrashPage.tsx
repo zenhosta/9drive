@@ -62,18 +62,21 @@ export function TrashPage() {
     setLoading(true)
     setMessage('')
     try {
-      await apiFetch('/files/batch/restore', {
+      const result = await apiFetch<{ restoredIds: string[]; failed: unknown[] }>('/files/batch/restore', {
         method: 'POST',
         body: JSON.stringify({ fileIds: ids })
       })
-      setFiles((prev) => prev.filter((f) => !ids.includes(f.id)))
+      const restoredIds = new Set(result.restoredIds)
+      setFiles((prev) => prev.filter((f) => !restoredIds.has(f.id)))
       setSelectedIds((prev) => {
         const next = new Set(prev)
-        ids.forEach((id) => next.delete(id))
+        restoredIds.forEach((id) => next.delete(id))
         return next
       })
-      setMessage(`Successfully restored ${ids.length} file(s).`)
-      setMessageType('success')
+      setMessage(result.failed.length > 0
+        ? `Restored ${restoredIds.size} file(s). ${result.failed.length} could not be restored.`
+        : `Successfully restored ${restoredIds.size} file(s).`)
+      setMessageType(result.failed.length > 0 ? 'error' : 'success')
       window.dispatchEvent(new Event('9drive:storage-changed'))
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Failed to restore files')
