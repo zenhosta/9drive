@@ -13,6 +13,7 @@ model User {
   email          String             @unique @db.VarChar(191)
   passwordHash   String             @map("password_hash") @db.VarChar(255)
   status         String             @default("active") @db.VarChar(32)
+  role           String             @default("user") @db.VarChar(32)
   createdAt      DateTime           @default(now()) @map("created_at")
   updatedAt      DateTime           @updatedAt @map("updated_at")
   sessions       UserSession[]

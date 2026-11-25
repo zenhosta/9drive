@@ -13,8 +13,13 @@ export function GoogleAuthPage() {
   const [message, setMessage] = useState('Completing Google sign-in...')
   const token = params.get('token')
   const status = params.get('status')
+  const reason = params.get('reason')
 
   useEffect(() => {
+    if (reason === 'registration_disabled') {
+      setMessage('Registration is disabled on this server. Ask the administrator to create your account first.')
+      return
+    }
     if (status === 'error' || !token) {
       setMessage('Google sign-in failed. Please try again.')
       return
@@ -26,7 +31,7 @@ export function GoogleAuthPage() {
         navigate('/all-files', { replace: true })
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : 'Google sign-in failed. Please try again.'))
-  }, [navigate, status, token])
+  }, [navigate, reason, status, token])
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 p-5">
