@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { DummyModal } from '@/components/drive/DummyModal'
 import { PageHeader } from '@/components/drive/PageHeader'
-import { apiFetch, formatBytes, API_URL } from '@/lib/api'
+import { apiFetch, formatBytes } from '@/lib/api'
 import { getGravatarUrl } from '@/lib/gravatar'
-import { getStoredUser, getAccessToken, clearAuthSession, updateStoredUser, type AuthUser } from '@/lib/auth'
+import { getStoredUser, updateStoredUser, type AuthUser } from '@/lib/auth'
 
 type ConnectedAccount = { id: string; provider: string; email: string; displayName?: string | null; status: string; storageAccount?: { totalBytes: string | null; usedBytes: string; availableBytes: string | null; lastSyncedAt: string | null } | null }
 
@@ -60,93 +60,6 @@ export function SettingsPage() {
   const [updateSuccess, setUpdateSuccess] = useState<boolean | null>(null)
   const [reconnectCount, setReconnectCount] = useState(0)
   const logContainerRef = useRef<HTMLDivElement>(null)
-
-  // Backup & Restore states
-  const [downloadingBackup, setDownloadingBackup] = useState(false)
-  const [restoringBackup, setRestoringBackup] = useState(false)
-  const [restoreFile, setRestoreFile] = useState<File | null>(null)
-  const [restoreMessage, setRestoreMessage] = useState('')
-  const [restoreSuccess, setRestoreSuccess] = useState(false)
-
-  async function downloadBackup() {
-    setDownloadingBackup(true)
-    try {
-      const token = getAccessToken()
-      const response = await fetch(`${API_URL}/system/backup`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      if (!response.ok) {
-        throw new Error('Failed to retrieve database backup.')
-      }
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = '9drive-backup.db'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (err: any) {
-      alert('Failed to download backup: ' + err.message)
-    } finally {
-      setDownloadingBackup(false)
-    }
-  }
-
-  function handleRestoreFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.files && e.target.files.length > 0) {
-      setRestoreFile(e.target.files[0])
-    } else {
-      setRestoreFile(null)
-    }
-  }
-
-  async function restoreBackup() {
-    if (!restoreFile) return
-    if (!confirm('WARNING: Restoring database will overwrite all your current configurations, connected accounts, virtual folders, and user accounts. The server will restart. Are you sure you want to proceed?')) {
-      return
-    }
-
-    setRestoringBackup(true)
-    setRestoreMessage('')
-    setRestoreSuccess(false)
-
-    try {
-      const token = getAccessToken()
-      const formData = new FormData()
-      formData.append('file', restoreFile)
-
-      const response = await fetch(`${API_URL}/system/restore`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to restore database.')
-      }
-
-      setRestoreSuccess(true)
-      setRestoreMessage(data.message || 'Database restored successfully! Logging you out and reloading...')
-
-      setTimeout(() => {
-        clearAuthSession()
-        window.location.href = '/login'
-      }, 4000)
-
-    } catch (err: any) {
-      setRestoreSuccess(false)
-      setRestoreMessage(err.message || 'Failed to restore database.')
-    } finally {
-      setRestoringBackup(false)
-    }
-  }
 
   useEffect(() => {
     if (!isPollingLog) return
@@ -242,7 +155,7 @@ export function SettingsPage() {
     const data = await apiFetch<{ accounts: ConnectedAccount[] }>('/connected-accounts')
     setAccounts(data.accounts)
 
-    // Instance-wide settings (Google credentials, updates, backup/restore) are admin-only.
+    // Instance-wide settings (Google credentials and updates) are admin-only.
     const me = await apiFetch<{ user: AuthUser }>('/auth/me')
     updateStoredUser(me.user)
     const admin = me.user.role === 'admin'
@@ -525,92 +438,6 @@ export function SettingsPage() {
             </div>
           </Card>
 
-          <Card className="overflow-hidden p-3.5">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <Database className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-[16px] font-bold">Backup & Restore Database</h2>
-                </div>
-                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">SQLite Local Database</span>
-              </div>
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                {/* Download Backup Section (Translucent Green Glass) */}
-                <div className="rounded-2xl bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 dark:border-emerald-500/30 hover:border-emerald-500/40 hover:bg-emerald-500/10 transition-all duration-300 p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group">
-                  <div className="flex items-start gap-4">
-                    <div className="h-10 w-10 shrink-0 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                      <HardDrive className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Download Database Backup</h3>
-                      <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400 leading-normal">
-                        Save a copy of your active database containing accounts, virtual folders, file metadata, and configurations.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    className="mt-5 w-full h-11 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20 border-0 transition-all duration-300 transform active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
-                    onClick={downloadBackup}
-                    disabled={downloadingBackup}
-                    style={{ color: '#ffffff' }}
-                  >
-                    <HardDrive className="h-4 w-4" style={{ color: '#ffffff' }} />
-                    <span style={{ color: '#ffffff' }}>{downloadingBackup ? 'Downloading...' : 'Download Backup'}</span>
-                  </button>
-                </div>
-
-                {/* Restore Backup Section (Translucent Orange Glass) */}
-                <div className="rounded-2xl bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 dark:border-amber-500/30 hover:border-amber-500/40 hover:bg-amber-500/10 transition-all duration-300 p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group">
-                  <div className="flex items-start gap-4">
-                    <div className="h-10 w-10 shrink-0 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                      <RefreshCw className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Restore Database Backup</h3>
-                      <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400 leading-normal">
-                        Upload a previously downloaded 9Drive backup file to replace the active database.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 grid gap-3">
-                    <input
-                      type="file"
-                      accept=".db"
-                      onChange={handleRestoreFileChange}
-                      className="block w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-[11px] file:font-extrabold file:bg-amber-500/15 file:text-amber-700 dark:file:text-amber-300 hover:file:bg-amber-500/20 cursor-pointer border border-amber-500/20 dark:border-amber-500/30 rounded-xl p-1 bg-amber-500/5"
-                    />
-                    {restoreFile ? (
-                      <button
-                        className="w-full h-11 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold shadow-md shadow-amber-500/10 hover:shadow-amber-500/20 border-0 transition-all duration-300 transform active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
-                        onClick={restoreBackup}
-                        disabled={restoringBackup}
-                        style={{ color: '#ffffff' }}
-                      >
-                        <RefreshCw className={restoringBackup ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} style={{ color: '#ffffff' }} />
-                        <span style={{ color: '#ffffff' }}>{restoringBackup ? 'Restoring & Restarting...' : 'Restore Backup'}</span>
-                      </button>
-                    ) : (
-                      <button
-                        className="w-full h-11 rounded-xl bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 border border-slate-200/50 dark:border-slate-800/50 cursor-not-allowed flex items-center justify-center gap-2"
-                        disabled
-                      >
-                        <RefreshCw className="h-4 w-4 text-slate-400 dark:text-slate-600" />
-                        <span>Restore Backup</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {restoreMessage && (
-                <p className={restoreSuccess ? "rounded-xl bg-emerald-50 p-3 text-xs font-semibold mt-1 text-emerald-700" : "rounded-xl bg-red-50 p-3 text-xs font-semibold mt-1 text-red-700"}>
-                  {restoreMessage}
-                </p>
-              )}
-            </div>
-          </Card>
           </>)}
         </div>
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 lg:gap-3">
