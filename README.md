@@ -95,8 +95,8 @@ Try the live preview at **[9drive.zenhosta.com](https://9drive.zenhosta.com)**.
 **Accounts and admin**
 - Email/password sign-up (optional reCAPTCHA) or **Continue with Google**, which connects your first Drive automatically.
 - Google OAuth credentials can be set in **Settings**. No `.env` editing needed.
-- Backup/restore and one-click updates from Settings (for PM2 setups).
-- The first account is the **admin**. Only the admin sees and can use Google credentials, updates, and backup/restore. Set `ALLOW_REGISTRATION=false` to stop new sign-ups, and change roles with `npm run user:set-role -- <email> <admin|user>`. On an existing install, the oldest account becomes the admin when you update.
+- One-click updates from Settings for PM2 setups, with MySQL backups documented below.
+- The first account is the **admin**. Only the admin can manage Google credentials and run updates. Set `ALLOW_REGISTRATION=false` to stop new sign-ups, and change roles with `npm run user:set-role -- <email> <admin|user>`. On an existing install, the oldest account becomes the admin when you update.
 
 ## Quick start
 
@@ -142,6 +142,26 @@ docker compose exec backend npm run user:set-role -- you@example.com admin   # m
 ```
 
 </details>
+
+#### MySQL backup and restore
+
+The SQL backup contains account settings, folder and file metadata, and encrypted provider credentials. Store it securely and keep a separate copy of `TOKEN_ENCRYPTION_KEY` to decrypt credentials after a restore. The files remain on Google Drive or S3.
+
+Run the backup from the Compose project directory while MySQL is running and no migration is in progress.
+
+```bash
+docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysqldump --single-transaction --quick --no-tablespaces -u "$MYSQL_USER" "$MYSQL_DATABASE"' > 9drive-backup.sql
+```
+
+To verify or restore a backup, use a fresh 9Drive installation with an empty MySQL volume and the original encryption key. Run the import before starting the backend. Confirm that the restored installation can open a file from a connected account before relying on the backup.
+
+```bash
+docker compose up -d --wait mysql
+docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql -u "$MYSQL_USER" "$MYSQL_DATABASE"' < 9drive-backup.sql
+docker compose up -d --build
+```
+
+See the [MySQL backup reference](https://dev.mysql.com/doc/refman/8.4/en/mysqldump.html) for permissions and options for other MySQL setups.
 
 ### Option B: Run locally (for development)
 
