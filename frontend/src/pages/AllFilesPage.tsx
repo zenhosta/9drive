@@ -67,10 +67,19 @@ function mapFolder(folder: BackendFolder): FolderItem {
 function FolderAppearanceFields({ color, iconUrl, onColorChange, onIconChange }: { color: string; iconUrl: string; onColorChange: (color: string) => void; onIconChange: (iconUrl: string) => void }) {
   const normalizedColor = normalizeFolderColor(color)
   return (
-    <div className="grid gap-4">
-      <label className="grid gap-2 text-sm font-semibold">Folder Color<Input type="color" value={normalizedColor} onChange={(event) => onColorChange(event.target.value)} className="h-12 p-1" /></label>
-      <div className="flex flex-wrap gap-2">{folderColorOptions.map((option) => <button key={option} type="button" onClick={() => onColorChange(option)} className={normalizedColor === option ? 'h-8 w-8 rounded-lg border-2 border-blue-600' : 'h-8 w-8 rounded-lg border border-slate-200'} style={{ backgroundColor: option }} aria-label={`Use ${option} folder color`} />)}</div>
-      <div className="grid gap-2 text-sm font-semibold"><span>Folder Icon</span><div className="grid grid-cols-4 gap-2 sm:grid-cols-8">{folderIconOptions.map((option) => <button key={option.url} type="button" onClick={() => onIconChange(option.url)} className={iconUrl === option.url ? 'flex h-12 items-center justify-center rounded-xl border-2 border-blue-600 bg-blue-50 p-2' : 'flex h-12 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-2 hover:bg-slate-100'} title={option.label} aria-label={`Use ${option.label} icon`}><img src={`${option.url}?color=${encodeURIComponent(normalizedColor)}`} alt="" className="h-6 w-6" /></button>)}</div></div>
+    <div className="grid gap-3">
+      <label className="flex items-center justify-between gap-2 text-sm font-semibold">Folder Color<Input type="color" value={normalizedColor} onChange={(event) => onColorChange(event.target.value)} className="h-8 w-14 p-1" /></label>
+      <div className="flex flex-wrap gap-1.5">{folderColorOptions.map((option) => <button key={option} type="button" onClick={() => onColorChange(option)} className={normalizedColor === option ? 'h-7 w-7 rounded-lg border-2 border-blue-600' : 'h-7 w-7 rounded-lg border border-slate-200'} style={{ backgroundColor: option }} aria-label={`Use ${option} folder color`} />)}</div>
+      <div className="grid gap-2 text-sm font-semibold">
+        <span>Folder Icon</span>
+        <div className="grid grid-cols-8 gap-1">
+          {folderIconOptions.map(({ label, url, Icon }) => (
+            <button key={url} type="button" onClick={() => onIconChange(url)} className={iconUrl === url ? 'flex h-8 items-center justify-center rounded-lg border-2 border-blue-600 bg-blue-50 sm:h-9' : 'flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 sm:h-9'} title={label} aria-label={`Use ${label} icon`} aria-pressed={iconUrl === url}>
+              <Icon aria-hidden="true" className="h-5 w-5 shrink-0" style={{ color: normalizedColor }} />
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
